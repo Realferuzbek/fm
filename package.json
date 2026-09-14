@@ -1,0 +1,60 @@
+{
+  "name": "bespoke-date-invitation",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "invite:create": "tsx scripts/create-invite.ts",
+    "invite:revoke": "tsx scripts/revoke-invite.ts",
+    "data:purge": "tsx scripts/purge-expired-data.ts"
+  },
+  "dependencies": {
+    "@exodus/bytes": "^1.15.1",
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "^0.45.2",
+    "next": "16.3.5",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.11.0",
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.63.0",
+    "@rolldown/binding-win32-x64-msvc": "^1.2.8",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "css-tree": "^3.2.1",
+    "cssstyle": "^6.2.0",
+    "drizzle-kit": "^0.31.8",
+    "entities": "^8.1.0",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "16.3.5",
+    "eslint-visitor-keys": "^5.0.1",
+    "jsdom": "^27.4.0",
+    "mdn-data": "^2.35.0",
+    "parse5": "^8.0.1",
+    "saxes": "^6.0.0",
+    "tinyglobby": "^0.2.17",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.0",
+    "whatwg-url": "^17.1.1",
+    "xmlchars": "^2.2.0"
+  }
+}
