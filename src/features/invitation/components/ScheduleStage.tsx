@@ -1,5 +1,6 @@
 "use client";
 import { useId, type FormEvent } from "react";
+import { TIME_OPTIONS } from "@/config/invitation";
 import styles from "../InvitationExperience.module.css";
 
 export function ScheduleStage({ date, time, minDate, isValid, onDateChange, onTimeChange, onConfirm }: {
@@ -20,18 +21,19 @@ export function ScheduleStage({ date, time, minDate, isValid, onDateChange, onTi
       <div className={styles.inputWrapper}>
         <label htmlFor={dateId} className={styles.inputLabel}>Our day</label>
         <input id={dateId} type="date" value={date} min={minDate} required className={styles.dateInput}
-          aria-describedby={hintId} aria-invalid={invalid || undefined} onChange={event => onDateChange(event.target.value)} />
+          aria-describedby={invalid ? hintId : undefined} aria-invalid={invalid || undefined} onChange={event => onDateChange(event.target.value)} />
       </div>
       <div className={styles.inputWrapper}>
         <label htmlFor={timeId} className={styles.inputLabel}>Your time</label>
-        <input id={timeId} type="time" value={time} required className={styles.timeInput}
-          aria-describedby={hintId} aria-invalid={invalid || undefined} onChange={event => onTimeChange(event.target.value)} />
+        <select id={timeId} value={time} required className={styles.timeInput}
+          aria-describedby={invalid ? hintId : undefined} aria-invalid={invalid || undefined} onChange={event => onTimeChange(event.target.value)}>
+          <option value="" disabled>Choose a time</option>
+          {TIME_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+        </select>
       </div>
     </div>
-    <p id={hintId} className={invalid ? styles.formError : styles.scheduleHint} aria-live="polite">
-      {invalid ? "A little further in the future, please ♡" : "A little rendezvous, in Tashkent time."}
-    </p>
-    <button type="submit" className={styles.confirmButton} disabled={!isValid}>Set the date ♡</button>
+    {invalid && <p id={hintId} className={styles.formError} role="status">A little further in the future, please ♡</p>}
+    <button type="submit" className={`${styles.confirmButton} ${styles.scheduleConfirm}`} disabled={!isValid}>Set the date ♡</button>
     <p className={styles.littleNote}>I&apos;ll make sure it&apos;s worth getting ready for.</p>
   </form>;
 }

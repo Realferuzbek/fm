@@ -12,9 +12,9 @@ const result = spawnSync(process.execPath, [cli, "test", "--project=chromium", "
 if (result.error) throw result.error;
 if (result.status !== 0) process.exit(result.status ?? 1);
 
-for (const width of [360, 390, 768, 1024, 1440, 1920]) {
-  for (let stage = 1; stage <= 5; stage++) {
+for (const width of [360, 390, 768, 1024, 1366, 1440, 1536, 1920]) {
+  for (let stage = 1; stage <= 6; stage++) {
     await access(new URL(`../test-results/visual/${width}-stage-${stage}.png`, import.meta.url));
   }
 }
-console.log("Verified 30 settled screenshots in test-results/visual (five stages at six widths).");
+console.log("Verified 48 settled screenshots in test-results/visual (six stages at eight responsive viewports).");

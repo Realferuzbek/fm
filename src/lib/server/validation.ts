@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { EVENT_NAMES, FOOD_OPTIONS, isValidDateValue, isValidTimeValue } from "@/config/invitation";
+import { EVENT_NAMES, FOOD_OPTIONS, LOCATION_OPTIONS, isValidDateValue, isValidTimeValue } from "@/config/invitation";
 import { ApiError } from "./security";
 
 export class InputValidationError extends ApiError {
@@ -11,6 +11,7 @@ export const reservationInputSchema = z.object({
   date: z.string().refine(isValidDateValue),
   time: z.string().refine(isValidTimeValue),
   food: z.enum(FOOD_OPTIONS.map((food) => food.id)),
+  location: z.enum(LOCATION_OPTIONS),
   requestId: z.uuid(),
   expectedVersion: z.number().int().min(0).max(2147483646),
 }).strict();
@@ -19,7 +20,7 @@ export type ReservationInput = z.infer<typeof reservationInputSchema>;
 // Future-time validation happens atomically in Postgres AFTER checking retries.
 export function parseReservationInput(input: unknown): ReservationInput {
   const parsed = reservationInputSchema.safeParse(input);
-  if (!parsed.success) throw new InputValidationError("Choose a valid date, time, and food option.");
+  if (!parsed.success) throw new InputValidationError("Choose a valid date, time, food, and meeting spot.");
   return parsed.data;
 }
 

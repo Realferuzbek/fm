@@ -9,7 +9,7 @@ export const INVITATION_CONFIG = {
   telegramUrl: "https://t.me/realferuzbek",
   timeZone: "Asia/Tashkent",
   audioVolume: 0.28,
-  motion: { reactionMs: 650, foodSelectionMs: 420 },
+  motion: { reactionMs: 650, foodSelectionMs: 420, locationSelectionMs: 420 },
   locale: "en-US"
 } as const;
 
@@ -19,15 +19,25 @@ export function assetUrl(path: string) {
 }
 
 export const FOOD_OPTIONS = [
-  { id: "donar", emoji: "🍗", label: "Donar", detail: "comfortingly correct" },
-  { id: "lavash", emoji: "🌯", label: "Lavash", detail: "wrapped with intention" },
-  { id: "shashlik", emoji: "🍢", label: "Shashlik", detail: "a very serious choice" },
-  { id: "taco", emoji: "🌮", label: "Taco", detail: "tiny fiesta energy" },
-  { id: "lagmon", emoji: "🍜", label: "Lag'mon", detail: "noodle-level cozy" },
-  { id: "osh", emoji: "🍚", label: "Osh", detail: "legendary, honestly" }
+  { id: "donar", emoji: "🍗", label: "Donar" },
+  { id: "lavash", emoji: "🌯", label: "Lavash" },
+  { id: "shashlik", emoji: "🍢", label: "Shashlik" },
+  { id: "taco", emoji: "🌮", label: "Taco" },
+  { id: "lagmon", emoji: "🍜", label: "Lag'mon" },
+  { id: "osh", emoji: "🍚", label: "Osh" }
 ] as const;
 
 export type FoodId = (typeof FOOD_OPTIONS)[number]["id"];
+
+export const LOCATION_OPTIONS = ["IB", "LRC", "Lyceum", "SHB", "ATB", "Sport Hall"] as const;
+export type LocationId = (typeof LOCATION_OPTIONS)[number];
+
+export const TIME_OPTIONS = [
+  "09:00", "09:30", "10:00", "10:30", "11:00", "11:30",
+  "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+  "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+  "18:00", "18:30", "19:00", "19:30", "20:00"
+] as const;
 
 export const EVENT_NAMES = [
   "visit_started",
@@ -42,6 +52,8 @@ export const EVENT_NAMES = [
   "date_confirmed",
   "food_screen_viewed",
   "food_selected",
+  "location_screen_viewed",
+  "location_selected",
   "final_screen_viewed",
   "telegram_clicked"
 ] as const;
@@ -83,9 +95,14 @@ export function isValidDateValue(value: string) {
   return candidate.getUTCFullYear() === Number(year) && candidate.getUTCMonth() === Number(month) - 1 && candidate.getUTCDate() === Number(day);
 }
 
-export function isValidTimeValue(value: string) {
+/** Historical bookings may use clock values outside the current picker. */
+export function isValidClockTimeValue(value: string) {
   const match = /^(\d{2}):(\d{2})$/.exec(value);
   return Boolean(match && Number(match[1]) <= 23 && Number(match[2]) <= 59);
+}
+
+export function isValidTimeValue(value: string) {
+  return TIME_OPTIONS.some((option) => option === value);
 }
 
 export function isFutureTashkentDateTime(date: string, time: string) {
@@ -95,12 +112,11 @@ export function isFutureTashkentDateTime(date: string, time: string) {
 }
 
 export function formatDateTimeInTashkent(date: string, time: string) {
-  if (!isValidDateValue(date) || !isValidTimeValue(time)) {
+  if (!isValidDateValue(date) || !isValidClockTimeValue(time)) {
     return { dateLabel: date, timeLabel: time, timeZoneLabel: "Tashkent time" };
   }
 
   const [year, month, day] = date.split("-").map(Number);
-  const [hours, minutes] = time.split(":").map(Number);
   const dateLabel = new Intl.DateTimeFormat(INVITATION_CONFIG.locale, {
     weekday: "long",
     month: "long",
@@ -108,12 +124,10 @@ export function formatDateTimeInTashkent(date: string, time: string) {
     year: "numeric",
     timeZone: "UTC"
   }).format(new Date(Date.UTC(year, month - 1, day, 12)));
-  const suffix = hours >= 12 ? "PM" : "AM";
-  const hour = hours % 12 || 12;
 
   return {
     dateLabel,
-    timeLabel: `${hour}:${String(minutes).padStart(2, "0")} ${suffix}`,
+    timeLabel: time,
     timeZoneLabel: "Tashkent time"
   };
 }

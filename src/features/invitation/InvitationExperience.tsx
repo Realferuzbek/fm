@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { useEffect, useReducer, useRef, useState, useSyncExternalStore } from "react";
-import { assetUrl, FOOD_OPTIONS, INVITATION_CONFIG, formatDateTimeInTashkent, isUuidValue, type AnalyticsEventName, type FoodId } from "@/config/invitation";
+import { assetUrl, FOOD_OPTIONS, LOCATION_OPTIONS, INVITATION_CONFIG, formatDateTimeInTashkent, isUuidValue, isValidDateValue, isValidTimeValue, type AnalyticsEventName, type FoodId, type LocationId } from "@/config/invitation";
 import { AmbientDecor } from "./components/AmbientDecor";
 import { FinalStage } from "./components/FinalStage";
 import { FoodStage } from "./components/FoodStage";
+import { LocationStage } from "./components/LocationStage";
 import { QuestionStage } from "./components/QuestionStage";
 import { ScheduleStage } from "./components/ScheduleStage";
 import { SurpriseStage } from "./components/SurpriseStage";
@@ -24,13 +25,14 @@ const subscribeMotion = (callback: () => void) => {
   return () => query.removeEventListener("change", callback);
 };
 const STAGE_EVENTS: Partial<Record<InvitationStage, AnalyticsEventName>> = {
-  question: "screen_1_viewed", surprise: "screen_2_viewed", schedule: "date_screen_viewed", food: "food_screen_viewed", final: "final_screen_viewed",
+  question: "screen_1_viewed", surprise: "screen_2_viewed", schedule: "date_screen_viewed", food: "food_screen_viewed", location: "location_screen_viewed", final: "final_screen_viewed",
 };
-const STAGE_NUMBER: Record<InvitationStage, number> = { question: 1, "yes-reaction": 2, surprise: 2, schedule: 3, food: 4, final: 5 };
+const STAGE_NUMBER: Record<InvitationStage, number> = { question: 1, "yes-reaction": 2, surprise: 2, schedule: 3, food: 4, location: 5, final: 6 };
 type BookingPhase = "idle" | "saving" | "review" | "error";
-interface PendingRequest { inviteId: string; requestId: string; expectedVersion: number; date: string; time: string; food: FoodId }
-const sameSelection = (value: { date: string; time: string; food: string }, other: { date: string; time: string; food: string }) =>
-  value.date === other.date && value.time === other.time && value.food === other.food;
+interface PendingRequest { inviteId: string; requestId: string; expectedVersion: number; date: string; time: string; food: FoodId; location: LocationId }
+type BookingSelection = Pick<PendingRequest, "date" | "time" | "food" | "location">;
+const sameSelection = (value: BookingSelection, other: Omit<BookingSelection, "location"> & { location: LocationId | null }) =>
+  value.date === other.date && value.time === other.time && value.food === other.food && value.location === other.location;
 
 export function InvitationExperience({ entry = "public" }: { entry?: "public" | "private" }) {
   const session = useInvitationSession(entry);
@@ -50,7 +52,7 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
   const returningFromTelegram = useRef(false);
   const reducedMotion = useSyncExternalStore(subscribeMotion, () => window.matchMedia(media).matches, () => false);
   const { track } = useEventTracking(session.mode, session.inviteId);
-  useAmbientAudio({ src: assetUrl(INVITATION_CONFIG.assetPaths.backgroundAudio), volume: INVITATION_CONFIG.audioVolume });
+  const { resetForNavigation } = useAmbientAudio({ src: assetUrl(INVITATION_CONFIG.assetPaths.backgroundAudio), volume: INVITATION_CONFIG.audioVolume });
   const requestStorageKey = "invitation:pending:" + scope;
 
   useEffect(() => {
@@ -68,14 +70,14 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
         try {
           const saved = JSON.parse(sessionStorage.getItem(requestStorageKey) ?? "null") as PendingRequest | null;
           if (saved && saved.inviteId === session.inviteId && isUuidValue(saved.requestId) &&
-            Number.isInteger(saved.expectedVersion) && typeof saved.date === "string" && typeof saved.time === "string" &&
-            FOOD_OPTIONS.some(food => food.id === saved.food)) {
+            Number.isInteger(saved.expectedVersion) && saved.expectedVersion >= 0 && isValidDateValue(saved.date) && isValidTimeValue(saved.time) &&
+            FOOD_OPTIONS.some(food => food.id === saved.food) && LOCATION_OPTIONS.includes(saved.location)) {
             if (session.reservation && sameSelection(saved, session.reservation)) {
               sessionStorage.removeItem(requestStorageKey);
               dispatch({ type: "RESET" });
             } else {
               pending.current = saved;
-              dispatch({ type: "RECOVER_PENDING", date: saved.date, time: saved.time, foodId: saved.food });
+              dispatch({ type: "RECOVER_PENDING", date: saved.date, time: saved.time, foodId: saved.food, location: saved.location });
               setPhase("error");
               setError("Your choices are safe here. Let's check that our plan saved.");
             }
@@ -134,7 +136,8 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
     };
     document.addEventListener("visibilitychange", onVisible);
     window.addEventListener("pageshow", onPageShow);
-    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("pageshow", onPageShow); };
+    window.addEventListener("focus", restart);
+    return () => { document.removeEventListener("visibilitychange", onVisible); window.removeEventListener("pageshow", onPageShow); window.removeEventListener("focus", restart); };
   }, [state.stage]);
 
   const clearPending = () => {
@@ -147,13 +150,13 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
     setPhase("idle");
     setError("");
     if (saved) { session.setReservation(saved); dispatch({ type: "SHOW_SAVED", reservation: saved }); }
-    else dispatch({ type: "FOOD_TRANSITION_COMPLETE" });
+    else dispatch({ type: "LOCATION_TRANSITION_COMPLETE" });
   };
   const delay = () => new Promise(resolve => setTimeout(resolve, reducedMotion ? 40 : INVITATION_CONFIG.motion.foodSelectionMs));
 
-  const saveReservation = async (food: FoodId) => {
-    if (busy.current) return;
-    const selection = { date: state.date, time: state.time, food };
+  const saveReservation = async (location: LocationId) => {
+    if (busy.current || !state.foodId || session.mode !== "private") return;
+    const selection = { date: state.date, time: state.time, food: state.foodId, location };
     // A prior save may have succeeded before its response was lost. The server
     // must reconcile that request even if the selected time has since passed.
     if (!isScheduleValid(state.date, state.time) && !(pending.current && sameSelection(pending.current, selection))) {
@@ -193,7 +196,7 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
     } finally { busy.current = false; }
   };
 
-  const reconcileReservation = async (selection: { date: string; time: string; food: FoodId }) => {
+  const reconcileReservation = async (selection: BookingSelection) => {
     if (busy.current || !session.inviteId) return;
     busy.current = true;
     setPhase("saving");
@@ -234,13 +237,27 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
     await delay();
     busy.current = false;
     if (!mounted.current) return;
+    setPhase("idle");
+    dispatch({ type: "FOOD_TRANSITION_COMPLETE" });
+  };
+  const selectLocation = async (location: LocationId) => {
+    if (busy.current || phase === "saving" || phase === "review" || !state.foodId) return;
+    busy.current = true;
+    dispatch({ type: "LOCATION_SELECTED", location });
+    track("location_selected");
+    setPhase("saving");
+    setError("");
+    await new Promise(resolve => setTimeout(resolve, reducedMotion ? 40 : INVITATION_CONFIG.motion.locationSelectionMs));
+    busy.current = false;
+    if (!mounted.current) return;
     if (session.mode === "public") { reveal(); return; }
+    const selection = { date: state.date, time: state.time, food: state.foodId, location };
     if (session.reservation) {
-      if (sameSelection({ date: state.date, time: state.time, food }, session.reservation)) await reconcileReservation({ date: state.date, time: state.time, food });
+      if (sameSelection(selection, session.reservation)) await reconcileReservation(selection);
       else setPhase("review");
       return;
     }
-    await saveReservation(food);
+    await saveReservation(location);
   };
   const okay = () => {
     track("okay_clicked");
@@ -258,7 +275,7 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
   return <main className={styles.experience}>
     <AmbientDecor />
     <div className={styles.masthead} aria-hidden="true"><span>a little invitation</span><i>♡</i></div>
-    <div className={styles.card}>
+    <div className={styles.card} data-testid="story-card">
       <div className={styles.cardHeader} aria-hidden="true"><span>a tiny story</span><svg viewBox="0 0 44 20" fill="none"><path d="M1 10h12m18 0h12M22 16s-8-4-8-9c0-5 6-6 8-2 2-4 8-3 8 2 0 5-8 9-8 9Z"/></svg><span>just for you</span></div>
       <div className={styles.stageViewport} style={contentHeight ? { height: contentHeight } : undefined}>
         <div ref={contentRef} className={styles.stageContent}>
@@ -274,31 +291,31 @@ export function InvitationExperience({ entry = "public" }: { entry?: "public" | 
               onDateChange={date => { dispatch({ type: "DATE_CHANGED", date }); if (date) track("date_selected"); }}
               onTimeChange={time => { dispatch({ type: "TIME_CHANGED", time }); if (time) track("time_selected"); }}
               onConfirm={() => { if (isScheduleValid(state.date, state.time)) { track("date_confirmed"); setPhase("idle"); dispatch({ type: "SCHEDULE_CONFIRMED" }); } }} />}
-            {state.stage === "food" && phase !== "review" && <FoodStage selectedFoodId={state.foodId} isTransitioning={phase === "saving"} onFoodSelect={food => { void selectFood(food); }} />}
-            {state.stage === "food" && phase === "review" && <section className={styles.review} aria-labelledby="review-heading">
+            {state.stage === "food" && <FoodStage selectedFoodId={state.foodId} isTransitioning={phase === "saving"} onFoodSelect={food => { void selectFood(food); }} />}
+            {state.stage === "location" && phase !== "review" && <LocationStage selectedLocation={state.location} isTransitioning={phase === "saving"} onLocationSelect={location => { void selectLocation(location); }} />}
+            {state.stage === "location" && phase === "review" && <section className={styles.review} aria-labelledby="review-heading">
               <p className={styles.eyebrow}>a little change of plans</p>
               <h1 id="review-heading" tabIndex={-1} data-review-heading>Save this new plan? ♡</h1>
-              <p>{proposed.dateLabel}<br />{proposed.timeLabel} · {selectedFood?.emoji} {selectedFood?.label}</p>
-              {oldPlan && <p>Our current plan: {oldPlan.dateLabel}, {oldPlan.timeLabel}, {FOOD_OPTIONS.find(food => food.id === session.reservation?.food)?.label}.</p>}
+              <p>{proposed.dateLabel}<br />{proposed.timeLabel} · {selectedFood?.emoji} {selectedFood?.label} · 📍 {state.location}</p>
+              {oldPlan && <p>Our current plan: {oldPlan.dateLabel}, {oldPlan.timeLabel}, {FOOD_OPTIONS.find(food => food.id === session.reservation?.food)?.label}{session.reservation?.location ? ` · 📍 ${session.reservation.location}` : ""}.</p>}
               {error && <p role="status">{error}</p>}
-              <button className={styles.confirmButton} onClick={() => { if (state.foodId) void saveReservation(state.foodId); }}>Save these changes ♡</button>
+              <button className={styles.confirmButton} onClick={() => { if (state.location) void saveReservation(state.location); }}>Save these changes ♡</button>
               <button className={styles.secondaryButton} onClick={() => { if (session.reservation) reveal(session.reservation); }}>Keep our original plan</button>
               <button className={styles.replayButton} onClick={() => { setPhase("idle"); dispatch({ type: "EDIT_SCHEDULE" }); }}>Let me choose again</button>
             </section>}
-            {state.stage === "food" && phase === "saving" && <p className={styles.savingStatus} role="status">Saving our little plan…</p>}
-            {state.stage === "food" && phase === "error" && <div className={styles.errorPanel} role="alert">
-              <p>{error}</p><button className={styles.confirmButton} onClick={() => { if (state.foodId) void saveReservation(state.foodId); }}>Try saving again ♡</button>
+            {state.stage === "location" && phase === "saving" && session.mode === "private" && <p className={styles.savingStatus} role="status">Saving our little plan…</p>}
+            {state.stage === "location" && phase === "error" && <div className={styles.errorPanel} role="alert">
+              <p>{error}</p><button className={styles.confirmButton} onClick={() => { if (state.location) void saveReservation(state.location); }}>Try saving again ♡</button>
               <button className={styles.replayButton} onClick={() => { setPhase("idle"); dispatch({ type: "EDIT_SCHEDULE" }); }}>Choose another day or time</button>
             </div>}
-            {state.stage === "final" && <FinalStage date={state.date} time={state.time} foodId={state.foodId} onReplay={replay}
-              onTelegramClick={() => { returningFromTelegram.current = true; track("telegram_clicked"); }} />}
+            {state.stage === "final" && <FinalStage date={state.date} time={state.time} foodId={state.foodId} location={state.location} onReplay={replay}
+              onTelegramClick={() => { resetForNavigation(); returningFromTelegram.current = true; track("telegram_clicked"); }} />}
           </>}
         </div>
       </div>
-      <div className={styles.progress} role="progressbar" aria-label="Invitation progress" aria-valuemin={1} aria-valuemax={5} aria-valuenow={STAGE_NUMBER[state.stage]} aria-valuetext={`Step ${STAGE_NUMBER[state.stage]} of 5`}>
-        {[1, 2, 3, 4, 5].map(number => <span key={number} className={number === STAGE_NUMBER[state.stage] ? styles.progressActive : undefined} aria-hidden="true" />)}
+      <div className={styles.progress} role="progressbar" aria-label="Invitation progress" aria-valuemin={1} aria-valuemax={6} aria-valuenow={STAGE_NUMBER[state.stage]} aria-valuetext={`Step ${STAGE_NUMBER[state.stage]} of 6`}>
+        {[1, 2, 3, 4, 5, 6].map(number => <span key={number} className={number === STAGE_NUMBER[state.stage] ? styles.progressActive : undefined} aria-hidden="true" />)}
       </div>
     </div>
-    <p className={styles.pageFooter}>a little courage. a lot of hope.</p>
   </main>;
 }

@@ -8,7 +8,7 @@ import { saveReservation, getCurrentReservation } from "@/lib/server/reservation
 import { persistEvents } from "@/lib/server/events";
 import { deliverNotification, PRIVATE_OPEN_MESSAGE } from "@/lib/server/notifications";
 
-const files = ["0000_existing_schema.sql", "0001_reservation_history.sql", "0002_request_idempotency.sql"];
+const files = ["0000_existing_schema.sql", "0001_reservation_history.sql", "0002_request_idempotency.sql", "0003_meeting_location.sql"];
 async function migrate(db: PGlite, names = files) {
   for (const file of names) await db.exec(await readFile(`drizzle/${file}`, "utf8"));
 }
@@ -17,7 +17,7 @@ describe("real Postgres reservation and delivery transactions", () => {
   let db: PGlite;
   let sql: SqlExecutor;
   let inviteId: string;
-  const input = (extra = {}) => ({ inviteId, requestId: randomUUID(), expectedVersion: 0, date: "2099-08-19", time: "19:30", food: "osh" as const, ...extra });
+  const input = (extra = {}) => ({ inviteId, requestId: randomUUID(), expectedVersion: 0, date: "2099-08-19", time: "19:30", food: "osh" as const, location: "LRC" as const, ...extra });
 
   beforeAll(async () => {
     db = new PGlite();
@@ -64,6 +64,17 @@ describe("real Postgres reservation and delivery transactions", () => {
     expect((await sql<{ time: string }>("SELECT time FROM reservation_revisions ORDER BY version")).map((row) => row.time)).toEqual(["19:30", "20:00"]);
     expect((await sql<{ kind: string }>("SELECT kind FROM notification_deliveries ORDER BY created_at")).map((row) => row.kind)).toEqual(["reservation_confirmed", "reservation_updated"]);
     expect((await saveReservation(inviteId, change, sql)).status).toBe("replayed");
+  });
+
+  it("treats a meeting-spot change as one versioned revision and deduplicates its replay", async () => {
+    await saveReservation(inviteId, input(), sql);
+    const change = input({ expectedVersion: 1, location: "Sport Hall" as const });
+    const updated = await saveReservation(inviteId, change, sql);
+    expect(updated.status).toBe("updated");
+    expect(updated.reservation).toMatchObject({ location: "Sport Hall", version: 2 });
+    expect((await saveReservation(inviteId, change, sql)).status).toBe("replayed");
+    expect(await sql("SELECT * FROM reservation_revisions")).toHaveLength(2);
+    expect(await sql("SELECT * FROM notification_deliveries")).toHaveLength(2);
   });
 
   it("rejects key reuse with changed data even when original operation was an unchanged replay", async () => {
@@ -156,6 +167,7 @@ it("migrates existing bookings and sent/unsent history without scheduling histor
     expect(rows).toEqual([{ status: "sent", telegram_message_id: "42" }, { status: "unknown", telegram_message_id: null }]);
     expect((await db.query("SELECT * FROM notification_outbox")).rows).toHaveLength(2);
     expect((await db.query("SELECT * FROM reservation_revisions")).rows).toHaveLength(2);
+    expect((await db.query<{ location: string | null }>("SELECT location FROM reservations")).rows.every(row => row.location === null)).toBe(true);
     await migrate(db, files.slice(1));
     expect((await db.query("SELECT * FROM notification_deliveries")).rows).toHaveLength(2);
   } finally { await db.close(); }

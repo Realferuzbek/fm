@@ -8,10 +8,8 @@ export function SurpriseStage({ isReaction = false, onOkay }: { isReaction?: boo
   </section>;
   return <section className={styles.stage} aria-labelledby="surprise-heading">
     <div className={styles.emotionIllustration} aria-hidden="true"><span>😭</span><i>♡</i><b>✧</b></div>
-    <p className={styles.eyebrow}>well. this is a plot twist.</p>
     <h1 id="surprise-heading" className={styles.surpriseHeading} tabIndex={-1} data-stage-heading>WAIT YOU ACTUALLY<br /><em>SAID YES??</em> <span className={styles.srOnly}>😭</span></h1>
     <p className={styles.surpriseSubtext}>I was so ready for you to say no 😭</p>
     <button type="button" className={styles.okayButton} onClick={onOkay}>okay okay! <span aria-hidden="true">→</span></button>
-    <p className={styles.littleNote}>let me pretend I had a plan.</p>
   </section>;
 }

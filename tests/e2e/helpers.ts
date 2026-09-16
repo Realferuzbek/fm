@@ -1,7 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 import { randomUUID } from "node:crypto";
 
-export const selection = { date: "2099-10-24", time: "19:00", food: "osh" };
+export const selection = { date: "2099-10-24", time: "19:00", food: "osh", location: "LRC" };
 export const inviteId = "b9470b74-8547-476f-b1da-7a019b5e81f9";
 export const reservation = { id: "421634b4-29c7-4a20-a838-ed42544e3e10", ...selection, version: 1 };
 export const reservationApiPattern = /\/api\/reservation(?:\?.*)?$/;
@@ -56,7 +56,7 @@ export async function mockPrivate(page: Page, initial: Reservation | null = null
     const body = route.request().postDataJSON();
     expect(body.inviteId).toBe(inviteId);
     requests.push(body);
-    current.reservation = { id: reservation.id, date: body.date, time: body.time, food: body.food, version: (current.reservation?.version ?? 0) + 1 };
+    current.reservation = { id: reservation.id, date: body.date, time: body.time, food: body.food, location: body.location, version: (current.reservation?.version ?? 0) + 1 };
     await route.fulfill({ json: { reservation: current.reservation, changed: true, notificationStatus: "pending" } });
   });
   return { current, reads, requests };
@@ -75,14 +75,19 @@ export async function toSchedule(page: Page) {
 export async function toFood(page: Page, date = selection.date, time = selection.time) {
   await toSchedule(page);
   await page.locator('input[type="date"]').fill(date);
-  await page.locator('input[type="time"]').fill(time);
+  await page.getByRole("combobox", { name: "Your time" }).selectOption(time);
   await page.getByRole("button", { name: "Set the date ♡", exact: true }).click();
   await expect(page.getByRole("heading", { name: /What are we feeling/ })).toBeVisible();
 }
-export async function toFinal(page: Page, food = "Osh") {
+export async function toFinal(page: Page, food = "Osh", location = selection.location) {
   await toFood(page);
   await page.getByRole("button", { name: new RegExp(food) }).click();
+  await chooseLocation(page, location);
   await finalVisible(page);
+}
+export async function chooseLocation(page: Page, location = selection.location) {
+  await expect(page.getByRole("heading", { name: /Where should\s*I find you/ })).toBeVisible();
+  await page.getByRole("button", { name: location, exact: true }).click();
 }
 export async function finalVisible(page: Page) {
   await expect(page.getByRole("heading", { name: /glad you didn't\s*say no ♡/ })).toBeVisible();

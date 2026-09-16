@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   EVENT_NAMES,
   FOOD_OPTIONS,
+  LOCATION_OPTIONS,
+  TIME_OPTIONS,
   INVITATION_CONFIG,
   assetUrl,
   formatDateTimeInTashkent,
@@ -31,7 +33,8 @@ describe("invitation configuration", () => {
     expect(EVENT_NAMES).toContain("visit_started");
     expect(EVENT_NAMES).toContain("no_button_attempted");
     expect(EVENT_NAMES).toContain("telegram_clicked");
-    expect(EVENT_NAMES).toHaveLength(14);
+    expect(EVENT_NAMES).toContain("location_selected");
+    expect(EVENT_NAMES).toHaveLength(16);
   });
 
   it("keeps personal assets and the destination in one safe configuration entry", () => {
@@ -50,7 +53,7 @@ describe("invitation configuration", () => {
   it("formats the planned time without interpreting it in the visitor's browser timezone", () => {
     expect(formatDateTimeInTashkent("2028-05-01", "17:30")).toEqual({
       dateLabel: "Monday, May 1, 2028",
-      timeLabel: "5:30 PM",
+      timeLabel: "17:30",
       timeZoneLabel: "Tashkent time",
     });
   });
@@ -58,8 +61,17 @@ describe("invitation configuration", () => {
   it("rejects impossible control values before they can reach the server", () => {
     expect(isValidDateValue("2028-02-29")).toBe(true);
     expect(isValidDateValue("2027-02-29")).toBe(false);
-    expect(isValidTimeValue("23:59")).toBe(true);
+    expect(TIME_OPTIONS).toHaveLength(23);
+    expect(TIME_OPTIONS[0]).toBe("09:00");
+    expect(TIME_OPTIONS.at(-1)).toBe("20:00");
+    expect(isValidTimeValue("19:30")).toBe(true);
+    expect(isValidTimeValue("19:15")).toBe(false);
+    expect(isValidTimeValue("20:30")).toBe(false);
     expect(isValidTimeValue("24:00")).toBe(false);
     expect(isFutureTashkentDateTime("bad", "19:30")).toBe(false);
+  });
+
+  it("allowlists exactly the six requested meeting spots", () => {
+    expect(LOCATION_OPTIONS).toEqual(["IB", "LRC", "Lyceum", "SHB", "ATB", "Sport Hall"]);
   });
 });

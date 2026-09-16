@@ -1,14 +1,14 @@
 .experience {
   position: relative; isolation: isolate; min-height: 100svh;
   display: flex; flex-direction: column; justify-content: center; align-items: center;
-  padding: 38px 20px 28px;
+  padding: clamp(16px, 3svh, 30px) 20px;
 }
-.masthead { position: relative; display: flex; align-items: center; gap: 13px; margin: 0 0 25px; color: #886979; }
+.masthead { position: relative; display: flex; align-items: center; gap: 13px; margin: 0 0 clamp(12px, 2svh, 20px); color: #886979; }
 .masthead span { font-size: 10px; letter-spacing: .24em; text-transform: uppercase; }
 .masthead::before, .masthead::after { content: ""; height: 1px; width: 32px; background: #d4b7c7; }
 .masthead i { font-family: var(--font-display), serif; font-size: 20px; font-style: normal; }
 .card {
-  position: relative; width: 100%; max-width: 570px; padding: 36px 44px 26px;
+  position: relative; width: 100%; max-width: 570px; padding: clamp(23px, 3svh, 31px) 44px 23px;
   border: 1px solid rgba(255,255,255,.96); border-radius: 32px;
   background: linear-gradient(150deg, rgba(255,254,253,.98), rgba(255,250,252,.94));
   box-shadow: 0 0 0 1px rgba(184,136,164,.10), 0 28px 80px -22px rgba(106,68,107,.23),
@@ -24,11 +24,10 @@
 .stageContent { padding: 2px 0; }
 .stage { animation: stageEnter 440ms var(--ease-out-soft) both; }
 @keyframes stageEnter { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: none; } }
-.pageFooter { margin: 25px 0 0; font-family: var(--font-display), serif; font-style: italic; font-size: 16px; letter-spacing: .025em; color: #927786; text-align: center; }
 .progress { display: flex; gap: 8px; justify-content: center; margin-top: 26px; }
 .progress span { width: 4px; height: 4px; border-radius: 10px; background: #e4d4de; transition: width .3s ease, background .3s ease; }
 .progress .progressActive { width: 19px; background: #ac708d; }
-.photoComposition { position: relative; width: 100%; margin: -2px auto 20px; }
+.photoComposition { position: relative; width: 100%; margin: -2px auto 15px; }
 .photoFrame { position: relative; width: 216px; aspect-ratio: 1; margin: auto; }
 .petPhoto { border-radius: 50%; filter: drop-shadow(0 8px 12px rgba(143,94,125,.08)); }
 .petFallback { display: grid; place-items: center; height: 100%; border-radius: 50%; background: var(--rose-100); font-size: 60px; }
@@ -41,7 +40,6 @@
 .questionHeading { font-size: 46px; }
 .questionHeading em, .scheduleHeading em, .foodHeading em, .finalHeading em { color: #995b79; font-weight: 500; }
 .headingFlower { display: inline-block; font-size: 20px; vertical-align: middle; margin-inline: 3px; }
-.questionSupport { font-size: 12px; line-height: 1.6; margin: 19px 0 0; color: var(--ink-soft); }
 .button, .primaryButton {
   display: inline-flex; justify-content: center; align-items: center; gap: 15px;
   min-height: 52px; padding: 14px 30px; border-radius: 14px; border: 1px solid transparent;
@@ -59,16 +57,17 @@
 }
 .primaryButton:active { transform: translateY(0) scale(.975); }
 .primaryButton:disabled { cursor: default; background: #e8d9e1; color: #806f7a; box-shadow: none; transform: none; }
-.choiceArena { position: relative; height: 164px; margin: 9px -12px -13px; touch-action: pan-y; }
+.choiceArena { position: relative; height: 103px; margin: 8px -12px 0; touch-action: pan-y; }
 .yesButton { composes: primaryButton; position: absolute; left: calc(50% - 137px); top: 28px; width: 142px; font-size: 14px; letter-spacing: .03em; }
+.yesButton:hover, .yesButton:active { transform: none; }
 .noButton {
   composes: button; position: absolute; left: calc(50% + 25px); top: 30px; min-height: 48px; width: 92px; padding: 10px 20px;
   color: #826b7d; background: #fffafc; border-color: #eadbe4;
-  transition: transform .28s var(--ease-out-soft), background .18s ease;
-  will-change: transform;
+  transition: background .18s ease;
+  will-change: transform; z-index: 3; touch-action: none;
 }
 .noButton:disabled { cursor: default; }
-.escapeStatus { min-height: 30px; margin: 0; font-family: var(--font-display), serif; font-style: italic; font-size: 16px; color: #8b7183; line-height: 1.35; }
+.escapeStatus { min-height: 22px; margin: 0; font-family: var(--font-display), serif; font-style: italic; font-size: 16px; color: #8b7183; line-height: 1.35; }
 .srOnly { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 .reactionStage { min-height: 395px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
 .reactionHeart { font-family: var(--font-display), serif; font-size: 104px; line-height: 1; color: #be88a1; animation: heartBeat .65s ease both; }
@@ -77,20 +76,20 @@
 .reactionLine { width: 92px; height: 2px; background: #eedbe5; border-radius: 2px; overflow: hidden; }
 .reactionLine::after { content: ""; display: block; height: 100%; background: #b5809c; animation: processing .65s ease both; transform-origin: left; }
 @keyframes processing { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.emotionIllustration { position: relative; width: 135px; height: 122px; margin: 25px auto 26px; display: grid; place-items: center; background: radial-gradient(ellipse, #f7e3ef, transparent 72%); }
+.emotionIllustration { position: relative; width: 135px; height: 122px; margin: 17px auto 21px; display: grid; place-items: center; background: radial-gradient(ellipse, #f7e3ef, transparent 72%); }
 .emotionIllustration > span { font-size: 66px; transform: rotate(-7deg); filter: drop-shadow(0 8px 10px #e8cbd86b); }
 .emotionIllustration i { position: absolute; font-size: 34px; color: #ba8eaa; top: 0; right: -8px; font-style: normal; transform: rotate(18deg); }
 .emotionIllustration b { position: absolute; left: -7px; bottom: 14px; color: #bf98b0; font-weight: 400; font-size: 27px; }
 .surpriseHeading { font-size: 38px; line-height: 1.17; letter-spacing: -.025em; }
 .surpriseHeading em { font-style: normal; color: #9c5e7c; }
-.surpriseSubtext { font-family: var(--font-display), serif; font-size: 23px; font-style: italic; color: var(--ink-soft); margin: 20px 0 33px; }
+.surpriseSubtext { font-family: var(--font-display), serif; font-size: 18px; font-style: italic; color: var(--ink-soft); margin: 15px 0 25px; }
 .okayButton { composes: primaryButton; min-width: 208px; }
 .littleNote { margin: 21px 0 7px; color: #897182; font-size: 11px; line-height: 1.6; }
-.lineIllustration { width: 73px; height: 73px; margin: 13px auto 23px; }
+.lineIllustration { width: 73px; height: 73px; margin: 7px auto 17px; }
 .lineIllustration svg, .finalIllustration svg { width: 100%; height: 100%; stroke: #b37d98; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 .filledHeart { fill: #f1d3e0; stroke: #b87898; }
 .scheduleHeading, .foodHeading { font-size: 49px; }
-.scheduleSubtext, .foodSubtext { font-family: var(--font-display), serif; color: var(--ink-soft); font-style: italic; font-size: 23px; margin: 14px 0 30px; }
+.scheduleSubtext, .foodSubtext { font-family: var(--font-display), serif; color: var(--ink-soft); font-style: italic; font-size: 23px; margin: 12px 0 23px; }
 .inputGroup { display: grid; grid-template-columns: 1.24fr 1fr; gap: 14px; text-align: left; }
 .inputWrapper { min-width: 0; }
 .inputLabel { display: block; margin: 0 0 8px 3px; font-size: 10px; color: #856576; letter-spacing: .1em; text-transform: uppercase; }
@@ -102,15 +101,15 @@
 }
 .dateInput:focus, .timeInput:focus { outline: none; border-color: #ae7594; box-shadow: 0 0 0 3px #f4e5ee; }
 .dateInput::-webkit-date-and-time-value, .timeInput::-webkit-date-and-time-value { text-align: left; }
-.scheduleHint, .formError { margin: 13px 0 23px; font-size: 11px; min-height: 18px; line-height: 1.6; color: #876c7f; }
-.formError { color: #91415b; }
+.formError { margin: 11px 0 0; font-size: 11px; line-height: 1.6; color: #91415b; }
 .confirmButton { composes: primaryButton; width: 100%; }
-.foodHeading { margin-top: 22px; }
+.scheduleConfirm { margin-top: 21px; }
+.foodHeading { margin-top: 15px; }
 .foodHeadingEmoji { display: inline-block; font-size: 27px; letter-spacing: -.1em; vertical-align: middle; }
 .foodGrid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
 .foodOption {
   position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
-  min-width: 0; min-height: 135px; padding: 17px 9px; border: 1px solid #ecdee7; border-radius: 17px;
+  min-width: 0; min-height: 107px; padding: 15px 9px; border: 1px solid #ecdee7; border-radius: 17px;
   background: linear-gradient(150deg, #fffdfe, #fbf6fa); color: var(--ink); cursor: pointer; touch-action: manipulation;
   transition: transform .2s var(--ease-out-soft), border-color .2s, box-shadow .2s, background .2s;
 }
@@ -121,21 +120,20 @@
 .foodEmoji { font-size: 32px; line-height: 1.2; transition: transform .25s var(--ease-out-soft); }
 .foodOptionSelected .foodEmoji { transform: rotate(-7deg) scale(1.12); }
 .foodLabel { font-size: 13px; font-weight: 500; }
-.foodDetail { font-family: var(--font-display), serif; font-size: 14px; font-style: italic; line-height: 1.1; color: #846c7b; }
 .selectionMark { position: absolute; top: 8px; right: 10px; color: #985d7b; font-size: 12px; }
-.finalIllustration { position: relative; width: 112px; height: 91px; margin: 17px auto 23px; }
+.finalIllustration { position: relative; width: 112px; height: 91px; margin: 7px auto 17px; }
 .finalIllustration span { position: absolute; right: -24px; top: 3px; font-family: var(--font-display), serif; font-size: 29px; color: #bc91aa; transform: rotate(15deg); }
 .finalHeading { font-size: 49px; }
-.dateTicket { position: relative; padding: 24px 18px 22px; margin: 27px 0 25px; border: 1px solid #ead5e1; border-radius: 17px; background: linear-gradient(120deg, #fcf3f7, #f9f2fa); }
+.dateTicket { position: relative; padding: 19px 18px; margin: 21px 0; border: 1px solid #ead5e1; border-radius: 17px; background: linear-gradient(120deg, #fcf3f7, #f9f2fa); }
 .ticketLabel { font-size: 9px; letter-spacing: .22em; color: #91667e; }
 .finalLead { margin: 14px 0 0; font-size: 12px; color: var(--ink-soft); line-height: 1.6; }
 .finalLead strong { display: block; margin: 2px 0 4px; font-family: var(--font-display), serif; font-weight: 500; color: #88536e; font-size: 45px; line-height: 1.1; }
 .finalLead > span { display: block; font-size: 13px; }
-.ticketDetails { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 7px 16px; border-top: 1px dashed #dfc7d5; margin-top: 20px; padding-top: 15px; font-size: 10px; color: #7b6175; line-height: 1.5; }
+.ticketDetails { display: flex; align-items: center; justify-content: center; flex-wrap: wrap; gap: 6px 16px; border-top: 1px dashed #dfc7d5; margin-top: 16px; padding-top: 12px; font-size: 12px; color: #7b6175; line-height: 1.5; }
+.ticketDate { flex-basis: 100%; }
 .ticketHeart { position: absolute; right: -9px; top: 47%; width: 18px; height: 22px; border-radius: 50%; background: #fffbfd; color: #c598b0; font-size: 16px; }
 .telegramButton { composes: primaryButton; width: 100%; }
 .telegramButton svg { margin-left: 3px; opacity: .8; }
-.reservationStatus { color: #7c6575; font-size: 10px; line-height: 1.5; margin: 16px -5px 0; }
 .replayButton { min-height: 36px; padding: 9px 12px; margin-top: 11px; background: transparent; border: none; border-radius: 8px; font-family: var(--font-display), serif; font-size: 15px; font-style: italic; color: #846576; cursor: pointer; }
 .review { border: 1px solid #e7d1df; border-radius: 16px; padding: 22px; margin-top: 20px; text-align: left; background: #fcf4f8; animation: stageEnter .3s ease both; }
 .review h1 { font-family: var(--font-display), serif; font-size: 27px; font-weight: 500; margin: 0 0 8px; }
@@ -177,31 +175,35 @@
   .eyebrow { font-size: 8px; letter-spacing: .17em; margin-bottom: 11px; }
   .questionHeading { font-size: 36px; }
   .headingFlower { font-size: 14px; margin-inline: 0; }
-  .questionSupport { font-size: 10px; margin-top: 15px; }
-  .choiceArena { height: 156px; margin-top: 4px; }
+  .choiceArena { height: 91px; margin-top: 4px; }
   .yesButton { left: calc(50% - 119px); width: 125px; top: 20px; }
   .noButton { left: calc(50% + 24px); width: 81px; padding-inline: 12px; top: 22px; }
   .escapeStatus { font-size: 14px; }
   .progress { margin-top: 19px; }
-  .pageFooter { font-size: 14px; margin-top: 20px; }
   .surpriseHeading { font-size: 31px; }
-  .surpriseSubtext { font-size: 20px; }
+  .surpriseSubtext { font-size: 17px; }
   .scheduleHeading, .foodHeading, .finalHeading { font-size: 42px; }
   .scheduleSubtext, .foodSubtext { font-size: 22px; }
   .inputGroup { grid-template-columns: 1fr; gap: 17px; }
   .dateInput, .timeInput { height: 54px; font-size: 16px; }
   .foodGrid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
-  .foodOption { min-height: 126px; padding: 15px 8px; }
-  .foodDetail { font-size: 13px; }
+  .foodOption { min-height: 95px; padding: 13px 8px; }
   .foodHeadingEmoji { font-size: 24px; }
   .finalLead strong { font-size: 43px; }
   .dateTicket { margin-top: 23px; padding: 22px 12px 19px; }
-  .ticketDetails { flex-direction: column; gap: 6px; font-size: 10px; }
-  .reservationStatus { font-size: 9px; }
+  .ticketDetails { gap: 6px 14px; font-size: 11px; }
   .botanicalLeft { left: -70px; opacity: .17; }
   .botanicalRight { right: -70px; opacity: .17; }
   .sparkleOne { left: 4%; font-size: 20px; }
   .sparkleTwo { right: 4%; }
+}
+@media (min-width: 601px) and (max-height: 800px) {
+  .cardHeader { margin-bottom: 11px; }
+  .photoComposition { margin-bottom: 11px; }
+  .progress { margin-top: 19px; }
+  .lineIllustration { margin-block: 3px 13px; }
+  .finalIllustration { margin-block: 3px 13px; }
+  .dateTicket { margin-block: 17px; }
 }
 @media (max-width: 359px) {
   .card { padding-inline: 18px; }

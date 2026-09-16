@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { isolateEvents, openQuestion } from "./helpers";
+import { isolateEvents, openQuestion, toFinal } from "./helpers";
 
 test.beforeEach(async ({ page }) => { await isolateEvents(page); });
 
@@ -68,5 +68,40 @@ test("configured MP3 and supplied image load successfully", async ({ page }) => 
   expect((await audioResponse.body()).byteLength).toBeGreaterThan(0);
   await expect.poll(() => page.getByRole("img").evaluate((image: HTMLImageElement) => image.complete && image.naturalWidth > 0)).toBe(true);
   expect(badAssets).toEqual([]);
+});
+
+test("Back to him rewinds music and returning rearms playback from Screen 1", async ({ page, context }) => {
+  await page.addInitScript(() => {
+    const target = window as typeof window & { __audioReset: { plays: number; pauses: number; element?: HTMLAudioElement } };
+    target.__audioReset = { plays: 0, pauses: 0 };
+    HTMLMediaElement.prototype.play = function () {
+      target.__audioReset.plays++;
+      target.__audioReset.element = this as HTMLAudioElement;
+      return Promise.resolve();
+    };
+    HTMLMediaElement.prototype.pause = function () { target.__audioReset.pauses++; };
+  });
+  await context.route("https://t.me/**", route => route.fulfill({ contentType: "text/html", body: "Telegram destination" }));
+  await openQuestion(page);
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioReset: { plays: number } }).__audioReset.plays)).toBeGreaterThan(0);
+  await toFinal(page);
+  await page.evaluate(() => {
+    const state = (window as typeof window & { __audioReset: { element?: HTMLAudioElement } }).__audioReset;
+    if (state.element) state.element.currentTime = 37;
+  });
+  const before = await page.evaluate(() => (window as typeof window & { __audioReset: { plays: number } }).__audioReset.plays);
+  const popup = page.waitForEvent("popup");
+  await page.getByRole("link", { name: "Back to him ♡", exact: true }).click();
+  await popup;
+  await expect.poll(() => page.evaluate(() => {
+    const state = (window as typeof window & { __audioReset: { pauses: number; element?: HTMLAudioElement } }).__audioReset;
+    return { pauses: state.pauses, time: state.element?.currentTime };
+  })).toMatchObject({ time: 0 });
+  expect(await page.evaluate(() => sessionStorage.getItem("invitation:audio:await-interaction"))).toBe("1");
+  await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+  await expect(page.getByRole("button", { name: "YES ♡", exact: true })).toBeEnabled();
+  expect(await page.evaluate(() => (window as typeof window & { __audioReset: { plays: number } }).__audioReset.plays)).toBe(before);
+  await page.getByRole("button", { name: "YES ♡", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as typeof window & { __audioReset: { plays: number } }).__audioReset.plays)).toBeGreaterThan(before);
 });
 

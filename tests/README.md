@@ -34,7 +34,7 @@ and the HTML report are written under `test-results/` and `playwright-report/`.
   Private endpoints and analytics are intercepted in each browser context. Tests
   cannot consume a live invitation or create a real reservation notification.
 
-The browser suite includes all five stages, all six foods, date validation,
+The browser suite includes all six stages, all six foods, date and time validation,
 keyboard navigation, reduced motion, audio autoplay/fallback, asset loading,
 all-stage axe checks, continuous NO collision/bounds sampling, touch attempts,
 resizing, public/private isolation, token scrubbing, stable visit correlation,
@@ -49,8 +49,8 @@ npm run test:screenshots
 node scripts/verify-screenshots.mjs
 ```
 
-Captures are generated at 360, 390, 768, 1024, 1440, and 1920 pixels, with five
-stage screenshots per width in `test-results/visual/`. They wait for fonts,
+Captures are generated at 360, 390, 768, 1024, 1366, 1440, 1536, and 1920 pixels, with six
+stage screenshots per viewport in `test-results/visual/`. They wait for fonts,
 image decoding, and finite animations. They do not wait for network-idle because
 music and analytics remain active. Screenshots are review artifacts, not stored
 pixel baselines; inspect typography, spacing, image treatment, and hierarchy.

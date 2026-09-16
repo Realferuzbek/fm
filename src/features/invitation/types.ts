@@ -1,15 +1,16 @@
-import type { FoodId, AnalyticsEventName } from "@/config/invitation";
+import type { FoodId, LocationId, AnalyticsEventName } from "@/config/invitation";
 
-export type InvitationStage = "question" | "yes-reaction" | "surprise" | "schedule" | "food" | "final";
+export type InvitationStage = "question" | "yes-reaction" | "surprise" | "schedule" | "food" | "location" | "final";
 export interface InvitationState {
   stage: InvitationStage;
   date: string;
   time: string;
   foodId: FoodId | null;
+  location: LocationId | null;
 }
 export type InvitationAction =
   | { type: "RESTORE"; payload: Partial<InvitationState> }
-  | { type: "RECOVER_PENDING"; date: string; time: string; foodId: FoodId }
+  | { type: "RECOVER_PENDING"; date: string; time: string; foodId: FoodId; location: LocationId }
   | { type: "RESET" }
   | { type: "YES_CLICKED" }
   | { type: "YES_REACTION_COMPLETE" }
@@ -19,6 +20,8 @@ export type InvitationAction =
   | { type: "SCHEDULE_CONFIRMED" }
   | { type: "FOOD_SELECTED"; foodId: FoodId }
   | { type: "FOOD_TRANSITION_COMPLETE" }
+  | { type: "LOCATION_SELECTED"; location: LocationId }
+  | { type: "LOCATION_TRANSITION_COMPLETE" }
   | { type: "EDIT_SCHEDULE" }
   | { type: "SHOW_SAVED"; reservation: ReservationSnapshot };
 export interface ReservationSnapshot {
@@ -26,6 +29,7 @@ export interface ReservationSnapshot {
   date: string;
   time: string;
   food: FoodId;
+  location: LocationId | null;
   version: number;
 }
 export type VisitorMode = "resolving" | "public" | "private" | "error";

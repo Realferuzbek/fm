@@ -21,11 +21,11 @@ body {
     radial-gradient(ellipse at 52% 98%, #f8e4ee 0, transparent 47%), #f9f4f5;
   font-family: var(--font-body), sans-serif; -webkit-font-smoothing: antialiased;
 }
-button, input, a { -webkit-tap-highlight-color: transparent; }
-button, input { font: inherit; }
+button, input, select, a { -webkit-tap-highlight-color: transparent; }
+button, input, select { font: inherit; }
 button { color: inherit; }
 a { color: inherit; }
-button:focus-visible, a:focus-visible, input:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 [data-stage-heading]:focus { outline: none; }
 ::selection { color: #fff; background: var(--rose-600); }
 @media (prefers-reduced-motion: reduce) {

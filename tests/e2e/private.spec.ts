@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { finalVisible, inviteId, isolateEvents, mockPrivate, openQuestion, reservation, reservationApiPattern, selection, toFinal, toFood } from "./helpers";
+import { chooseLocation, finalVisible, inviteId, isolateEvents, mockPrivate, openQuestion, reservation, reservationApiPattern, selection, toFinal, toFood } from "./helpers";
 
 test.beforeEach(async ({ page }) => { await isolateEvents(page); await page.emulateMedia({ reducedMotion: "reduce" }); });
 
@@ -62,9 +62,10 @@ test("unchanged replay reconciles a newer server plan before allowing a revision
 
   await openQuestion(page, "/invite"); await toFood(page);
   await page.getByRole("button", { name: /Osh/ }).click();
+  await chooseLocation(page);
   await expect(page.getByRole("heading", { name: "Save this new plan? ♡" })).toBeVisible();
   await expect(page.getByRole("status")).toContainText("changed in another tab");
-  await expect(page.getByText(/Our current plan:/)).toContainText("8:00 PM");
+  await expect(page.getByText(/Our current plan:/)).toContainText("20:00");
   expect(reads).toHaveLength(1);
   expect(requests).toHaveLength(0);
 
@@ -87,6 +88,7 @@ test("unchanged replay stops safely when the authenticated invite cookie changed
 
   await openQuestion(page, "/invite"); await toFood(page);
   await page.getByRole("button", { name: /Osh/ }).click();
+  await chooseLocation(page);
   await expect(page.getByRole("main").getByRole("alert")).toContainText("private invitation changed");
   expect(reads).toHaveLength(1);
   expect(requests).toHaveLength(0);
@@ -97,6 +99,7 @@ test("changed choices require explicit confirmation and one versioned update", a
   const { requests } = await mockPrivate(page, reservation);
   await openQuestion(page, "/invite"); await toFood(page);
   await page.getByRole("button", { name: /Lavash/ }).click();
+  await chooseLocation(page);
   await expect(page.getByRole("heading", { name: "Save this new plan? ♡" })).toBeVisible();
   expect(requests).toHaveLength(0);
   await page.getByRole("button", { name: "Save these changes ♡" }).click(); await finalVisible(page);
@@ -105,13 +108,27 @@ test("changed choices require explicit confirmation and one versioned update", a
   await expect(page.locator('[class*="ticketDetails"]')).toContainText("Lavash");
 });
 
+test("changing only location requires confirmation and creates one versioned update", async ({ page }) => {
+  const { requests } = await mockPrivate(page, reservation);
+  await openQuestion(page, "/invite"); await toFood(page);
+  await page.getByRole("button", { name: /Osh/ }).click();
+  await chooseLocation(page, "Sport Hall");
+  await expect(page.getByRole("heading", { name: "Save this new plan? ♡" })).toBeVisible();
+  expect(requests).toHaveLength(0);
+  await page.getByRole("button", { name: "Save these changes ♡" }).click(); await finalVisible(page);
+  expect(requests).toHaveLength(1);
+  expect(requests[0]).toMatchObject({ ...selection, location: "Sport Hall", expectedVersion: 1 });
+  await expect(page.locator('[class*="ticketDetails"]')).toContainText("📍 Sport Hall");
+});
+
 test("keeping the current plan discards proposed changes without a write", async ({ page }) => {
   const { requests } = await mockPrivate(page, reservation);
-  await openQuestion(page, "/invite"); await toFood(page, "2099-11-01", "20:30");
+  await openQuestion(page, "/invite"); await toFood(page, "2099-11-01", "20:00");
   await page.getByRole("button", { name: /Taco/ }).click();
+  await chooseLocation(page);
   await page.getByRole("button", { name: "Keep our original plan" }).click(); await finalVisible(page);
   expect(requests).toHaveLength(0);
-  await expect(page.getByText("7:00 PM", { exact: true })).toBeVisible();
+  await expect(page.getByText("19:00", { exact: true })).toBeVisible();
   await expect(page.locator('[class*="ticketDetails"]')).toContainText("Osh");
 });
 
@@ -122,7 +139,7 @@ test("failed submission retries the same request ID and preserves selections", a
     bodies.push(route.request().postDataJSON());
     await route.fulfill(bodies.length === 1 ? { status: 503, json: { error: "Unavailable" } } : { json: { reservation, changed: true } });
   });
-  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Osh/ }).click();
+  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Osh/ }).click(); await chooseLocation(page);
   await expect(page.getByRole("main").getByRole("alert")).toContainText("Your choices are still here");
   const stored = await page.evaluate(id => JSON.parse(sessionStorage.getItem("invitation:pending:private:" + id) ?? "null"), inviteId);
   expect(stored).toMatchObject({ ...selection, inviteId, expectedVersion: 0 });
@@ -140,7 +157,7 @@ test("a cookie/invite mismatch cannot redirect a booking write", async ({ page }
     await route.fulfill({ status: 409, json: { code: "invitation_session_changed", error: "Invitation session changed." } });
   });
 
-  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Osh/ }).click();
+  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Osh/ }).click(); await chooseLocation(page);
   await expect(page.getByRole("main").getByRole("alert")).toContainText("private invitation changed");
   expect(bodies).toHaveLength(1);
   expect(bodies[0]).toMatchObject({ ...selection, inviteId });
@@ -173,11 +190,11 @@ test("a stale revision shows the latest plan and requires fresh confirmation", a
     await route.fulfill(bodies.length === 1 ? { status: 409, json: { reservation: { ...reservation, time: "20:00", version: 2 } } } :
       { json: { reservation: { ...reservation, food: "lavash", version: 3 }, changed: true } });
   });
-  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Lavash/ }).click();
+  await openQuestion(page, "/invite"); await toFood(page); await page.getByRole("button", { name: /Lavash/ }).click(); await chooseLocation(page);
   await page.getByRole("button", { name: "Save these changes ♡" }).click();
   await expect(page.getByRole("status")).toContainText("changed in another tab");
   expect(bodies).toHaveLength(1);
-  await expect(page.getByText(/Our current plan:/)).toContainText("8:00 PM");
+  await expect(page.getByText(/Our current plan:/)).toContainText("20:00");
   await page.getByRole("button", { name: "Save these changes ♡" }).click(); await finalVisible(page);
   expect(bodies[1].expectedVersion).toBe(2); expect(bodies[1].requestId).not.toBe(bodies[0].requestId);
 });

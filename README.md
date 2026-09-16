@@ -1,6 +1,6 @@
 # A tiny date story ♡
 
-A five-stage, personal invitation with a persuasive pug, an evasive NO button, a date and time, six food choices, and a small romantic payoff. Built with Next.js App Router, React, TypeScript, and CSS modules.
+A six-stage, personal invitation with a persuasive pug, a continuously evasive NO button, fixed date and time choices, food and meeting-spot selection, and a small romantic payoff. Built with Next.js App Router, React, TypeScript, and CSS modules.
 
 ## Run locally
 

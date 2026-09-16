@@ -1,38 +1,18 @@
 "use client";
 
-import {
-  type MouseEvent as ReactMouseEvent,
-  type PointerEvent as ReactPointerEvent,
-  type RefObject,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type RefObject, useCallback, useEffect, useRef } from "react";
 
-export interface EscapePoint {
-  x: number;
-  y: number;
-}
+export interface EscapePoint { x: number; y: number }
+export interface EscapeRect { left: number; top: number; right: number; bottom: number; width: number; height: number }
 
-export interface EscapeRect {
-  left: number;
-  top: number;
-  right: number;
-  bottom: number;
-  width: number;
-  height: number;
-}
-
-export interface EscapeSolverInput {
-  arena: EscapeRect;
+export interface EscapeFrameInput {
   button: EscapeRect;
-  pointer: EscapePoint;
-  /** A rectangle the NO button should make room for, normally the YES CTA. */
+  bounds: EscapeRect;
+  velocity: EscapePoint;
+  pointer: EscapePoint | null;
   obstacle?: EscapeRect | null;
-  /** How often it has already escaped in this question screen. */
-  attempt: number;
-  reducedMotion?: boolean;
+  /** Elapsed seconds; long/background frames are capped rather than jumped. */
+  delta: number;
 }
 
 export interface UseNoEscapeOptions {
@@ -45,430 +25,290 @@ export interface UseNoEscapeOptions {
   onStatus?: (message: string) => void;
 }
 
-export interface UseNoEscapeResult {
-  /** Use as a transform; the button remains in normal keyboard/tab order. */
-  offset: EscapePoint;
-  onArenaPointerMove: (event: ReactPointerEvent<HTMLElement>) => void;
-  onNoPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-  onNoClick: (event?: ReactMouseEvent<HTMLButtonElement>) => void;
-}
-
-const ARENA_PADDING = 8;
+const EDGE_MARGIN = 14;
 const OBSTACLE_GUTTER = 12;
-const PROXIMITY_RADIUS = 124;
-const REARM_RADIUS = PROXIMITY_RADIUS + 30;
-const ESCAPE_COOLDOWN_MS = 340;
+const INFLUENCE_RADIUS = 140;
+const MAX_SPEED = 250;
+const STATUS_LINES = ["nice try.", "nah... try the other one.", "wrong button 😭", "that one seems unavailable."];
 
-const STATUS_LINES = [
-  "Nice try — it has places to be.",
-  "That button is feeling a little shy.",
-  "Nope is currently unavailable. ♡",
-  "It politely declined being clicked.",
-];
-
-function toEscapeRect(rect: DOMRect): EscapeRect {
-  return {
-    left: rect.left,
-    top: rect.top,
-    right: rect.right,
-    bottom: rect.bottom,
-    width: rect.width,
-    height: rect.height,
-  };
+function clamp(value: number, min: number, max: number) { return Math.min(Math.max(value, min), max); }
+function magnitude(point: EscapePoint) { return Math.hypot(point.x, point.y); }
+function at(position: EscapePoint, size: EscapeRect): EscapeRect {
+  return { left: position.x, top: position.y, right: position.x + size.width, bottom: position.y + size.height, width: size.width, height: size.height };
+}
+function overlaps(a: EscapeRect, b: EscapeRect, gutter = OBSTACLE_GUTTER) {
+  return a.left < b.right + gutter && a.right > b.left - gutter && a.top < b.bottom + gutter && a.bottom > b.top - gutter;
+}
+function distanceFromPointer(button: EscapeRect, pointer: EscapePoint) {
+  return Math.hypot(button.left + button.width / 2 - pointer.x, button.top + button.height / 2 - pointer.y);
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max);
-}
-
-function distance(a: EscapePoint, b: EscapePoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function rotate(vector: EscapePoint, radians: number): EscapePoint {
-  const cosine = Math.cos(radians);
-  const sine = Math.sin(radians);
-  return {
-    x: vector.x * cosine - vector.y * sine,
-    y: vector.x * sine + vector.y * cosine,
-  };
-}
-
-function overlaps(
-  first: EscapeRect,
-  second: EscapeRect,
-  gutter = 0,
-): boolean {
-  return !(
-    first.right + gutter <= second.left ||
-    first.left >= second.right + gutter ||
-    first.bottom + gutter <= second.top ||
-    first.top >= second.bottom + gutter
-  );
-}
-
-function candidateRect(
-  left: number,
-  top: number,
-  button: EscapeRect,
-): EscapeRect {
-  return {
-    left,
-    top,
-    width: button.width,
-    height: button.height,
-    right: left + button.width,
-    bottom: top + button.height,
-  };
-}
-
-/** Swept AABB: test the entire straight CSS transition against an expanded YES. */
-function routeCollides(button: EscapeRect, target: EscapeRect, obstacle: EscapeRect): boolean {
+/** The first wall crossed by the entire moving button, including YES's gutter. */
+function sweptCollision(button: EscapeRect, target: EscapePoint, obstacle: EscapeRect) {
   let enter = 0;
   let leave = 1;
-  const axes = [
-    [button.left, target.left - button.left, obstacle.left - button.width - OBSTACLE_GUTTER, obstacle.right + OBSTACLE_GUTTER],
-    [button.top, target.top - button.top, obstacle.top - button.height - OBSTACLE_GUTTER, obstacle.bottom + OBSTACLE_GUTTER],
-  ];
-  for (const [origin, delta, min, max] of axes) {
-    if (Math.abs(delta) < 0.0001) {
-      if (origin <= min || origin >= max) return false;
+  let axis: "x" | "y" = "x";
+  for (const [key, origin, delta, min, max] of [
+    ["x", button.left, target.x - button.left, obstacle.left - button.width - OBSTACLE_GUTTER, obstacle.right + OBSTACLE_GUTTER],
+    ["y", button.top, target.y - button.top, obstacle.top - button.height - OBSTACLE_GUTTER, obstacle.bottom + OBSTACLE_GUTTER],
+  ] as const) {
+    if (Math.abs(delta) < 0.00001) {
+      if (origin <= min || origin >= max) return null;
       continue;
     }
-    const first = (min - origin) / delta;
-    const last = (max - origin) / delta;
-    enter = Math.max(enter, Math.min(first, last));
-    leave = Math.min(leave, Math.max(first, last));
-    if (enter >= leave) return false;
+    const near = Math.min((min - origin) / delta, (max - origin) / delta);
+    const far = Math.max((min - origin) / delta, (max - origin) / delta);
+    if (near >= enter) { enter = near; axis = key; }
+    leave = Math.min(leave, far);
+    if (enter >= leave) return null;
   }
-  return enter < 1 && leave > 0;
+  return enter < 1 && leave > 0 ? { time: enter, axis } : null;
 }
 
-/**
- * Pure, deterministic solver used by the cursor and touch interactions. It
- * favours space away from the approaching pointer, stays inside the arena and
- * gives the YES control a generous berth. It never relies on teleporty random
- * positions, so each escape reads as an intentional route.
- */
-export function chooseEscapePosition(input: EscapeSolverInput): EscapePoint {
-  const { arena, button, pointer, obstacle, attempt, reducedMotion = false } = input;
-  if (reducedMotion) return { x: button.left, y: button.top };
-  const buttonCenter = {
-    x: button.left + button.width / 2,
-    y: button.top + button.height / 2,
-  };
-  const awayDistance = distance(buttonCenter, pointer);
-  const fallbackAngle = ((attempt * 53 + 31) * Math.PI) / 180;
-  const away =
-    awayDistance > 0.5
-      ? {
-          x: (buttonCenter.x - pointer.x) / awayDistance,
-          y: (buttonCenter.y - pointer.y) / awayDistance,
-        }
-      : { x: Math.cos(fallbackAngle), y: Math.sin(fallbackAngle) };
+function safePosition(button: EscapeRect, bounds: EscapeRect, obstacle?: EscapeRect | null): EscapePoint {
+  const minX = bounds.left + EDGE_MARGIN;
+  const maxX = Math.max(minX, bounds.right - EDGE_MARGIN - button.width);
+  const minY = bounds.top + EDGE_MARGIN;
+  const maxY = Math.max(minY, bounds.bottom - EDGE_MARGIN - button.height);
+  const position = { x: clamp(button.left, minX, maxX), y: clamp(button.top, minY, maxY) };
+  if (!obstacle || !overlaps(at(position, button), obstacle)) return position;
+  // Only layout/viewport changes can place YES underneath an existing position.
+  // Correct to the nearest clear side; ordinary movement uses swept collision.
+  const candidates = [
+    { x: obstacle.right + OBSTACLE_GUTTER, y: position.y },
+    { x: obstacle.left - OBSTACLE_GUTTER - button.width, y: position.y },
+    { x: position.x, y: obstacle.top - OBSTACLE_GUTTER - button.height },
+    { x: position.x, y: obstacle.bottom + OBSTACLE_GUTTER },
+  ].filter(point => point.x >= minX && point.x <= maxX && point.y >= minY && point.y <= maxY && !overlaps(at(point, button), obstacle));
+  candidates.sort((a, b) => Math.hypot(a.x - position.x, a.y - position.y) - Math.hypot(b.x - position.x, b.y - position.y));
+  return candidates[0] ?? position;
+}
 
-  const travel = Math.min(72 + Math.min(attempt, 5) * 12, 132);
-  const angularOffsets = [0, 0.34, -0.34, 0.7, -0.7, 1.08, -1.08, Math.PI];
-  const minLeft = arena.left + ARENA_PADDING;
-  const maxLeft = Math.max(minLeft, arena.right - ARENA_PADDING - button.width);
-  const minTop = arena.top + ARENA_PADDING;
-  const maxTop = Math.max(minTop, arena.bottom - ARENA_PADDING - button.height);
+/** One continuous physics frame. No destinations, random angles or cooldowns. */
+export function stepEscape({ button, bounds, pointer, obstacle, velocity, delta }: EscapeFrameInput) {
+  const position = safePosition(button, bounds, obstacle);
+  const current = at(position, button);
+  const center = { x: current.left + current.width / 2, y: current.top + current.height / 2 };
+  const dt = clamp(delta, 0, 1 / 30);
+  const distance = pointer ? distanceFromPointer(current, pointer) : Infinity;
+  const influence = Math.max(0, 1 - distance / INFLUENCE_RADIUS);
+  let force = { x: 0, y: 0 };
 
-  let best = { x: button.left, y: button.top, score: Number.NEGATIVE_INFINITY };
+  if (pointer && influence > 0) {
+    // An exact-center press has no away vector. Reuse momentum, or take the
+    // same gentle diagonal each time instead of choosing a random destination.
+    const speed = magnitude(velocity);
+    const away = distance > 0.5
+      ? { x: (center.x - pointer.x) / distance, y: (center.y - pointer.y) / distance }
+      : speed > 1 ? { x: velocity.x / speed, y: velocity.y / speed } : { x: 0.86, y: -0.51 };
+    force = { x: away.x, y: away.y };
 
-  for (const angularOffset of angularOffsets) {
-    const direction = rotate(away, angularOffset);
-    const left = clamp(button.left + direction.x * travel, minLeft, maxLeft);
-    const top = clamp(button.top + direction.y * travel, minTop, maxTop);
-    const candidate = candidateRect(left, top, button);
-    const center = {
-      x: candidate.left + candidate.width / 2,
-      y: candidate.top + candidate.height / 2,
+    // Gradually turn an outward force along an approaching wall. At a corner
+    // the free tangent points back into the viewport, so chasing never pins NO.
+    const steer = (normal: EscapePoint, clearance: number, tangent: EscapePoint) => {
+      const outward = force.x * normal.x + force.y * normal.y;
+      if (outward <= 0 || clearance >= 42) return;
+      const turn = outward * (1 - Math.max(0, clearance) / 42);
+      force.x += turn * (tangent.x * 1.15 - normal.x);
+      force.y += turn * (tangent.y * 1.15 - normal.y);
     };
-    const edgeClearance = Math.min(
-      candidate.left - arena.left,
-      arena.right - candidate.right,
-      candidate.top - arena.top,
-      arena.bottom - candidate.bottom,
-    );
-    const routeDistance = distance(center, buttonCenter);
-    const pointerDistance = distance(center, pointer);
-    const directionAlignment = direction.x * away.x + direction.y * away.y;
-    if (obstacle && (overlaps(candidate, obstacle, OBSTACLE_GUTTER) || routeCollides(button, candidate, obstacle))) continue;
+    const vertical = Math.abs(away.y) > 0.22 ? Math.sign(away.y) : Math.abs(velocity.y) > 15 ? Math.sign(velocity.y) : center.y < (bounds.top + bounds.bottom) / 2 ? 1 : -1;
+    const horizontal = Math.abs(away.x) > 0.22 ? Math.sign(away.x) : Math.abs(velocity.x) > 15 ? Math.sign(velocity.x) : center.x < (bounds.left + bounds.right) / 2 ? 1 : -1;
+    const verticalTangent = center.y < bounds.top + EDGE_MARGIN + button.height / 2 + 48 ? 1 : center.y > bounds.bottom - EDGE_MARGIN - button.height / 2 - 48 ? -1 : vertical;
+    const horizontalTangent = center.x < bounds.left + EDGE_MARGIN + button.width / 2 + 48 ? 1 : center.x > bounds.right - EDGE_MARGIN - button.width / 2 - 48 ? -1 : horizontal;
+    steer({ x: -1, y: 0 }, current.left - bounds.left - EDGE_MARGIN, { x: 0, y: verticalTangent });
+    steer({ x: 1, y: 0 }, bounds.right - EDGE_MARGIN - current.right, { x: 0, y: verticalTangent });
+    steer({ x: 0, y: -1 }, current.top - bounds.top - EDGE_MARGIN, { x: horizontalTangent, y: 0 });
+    steer({ x: 0, y: 1 }, bounds.bottom - EDGE_MARGIN - current.bottom, { x: horizontalTangent, y: 0 });
 
-    // Keep the original deterministic direction/distance scoring, but never
-    // accept a colliding route even when all other candidates are constrained.
-    const score =
-      pointerDistance * 3 +
-      edgeClearance * 0.55 +
-      routeDistance * 0.22 +
-      directionAlignment * 18;
-
-    if (score > best.score) best = { x: left, y: top, score };
+    if (obstacle) {
+      const gutter = OBSTACLE_GUTTER;
+      const verticalOverlap = current.bottom > obstacle.top - gutter && current.top < obstacle.bottom + gutter;
+      const horizontalOverlap = current.right > obstacle.left - gutter && current.left < obstacle.right + gutter;
+      const aroundY = center.y < (obstacle.top + obstacle.bottom) / 2 ? -1 : 1;
+      const aroundX = center.x < (obstacle.left + obstacle.right) / 2 ? -1 : 1;
+      if (verticalOverlap && current.left >= obstacle.right + gutter) steer({ x: -1, y: 0 }, current.left - obstacle.right - gutter, { x: 0, y: aroundY });
+      if (verticalOverlap && current.right <= obstacle.left - gutter) steer({ x: 1, y: 0 }, obstacle.left - gutter - current.right, { x: 0, y: aroundY });
+      if (horizontalOverlap && current.top >= obstacle.bottom + gutter) steer({ x: 0, y: -1 }, current.top - obstacle.bottom - gutter, { x: aroundX, y: 0 });
+      if (horizontalOverlap && current.bottom <= obstacle.top - gutter) steer({ x: 0, y: 1 }, obstacle.top - gutter - current.bottom, { x: aroundX, y: 0 });
+    }
+    const strength = 2900 * influence ** 1.4;
+    force.x *= strength;
+    force.y *= strength;
   }
 
-  return { x: best.x, y: best.y };
-}
-
-function hasFinePointer(): boolean {
-  return (
-    typeof window !== "undefined" &&
-    window.matchMedia("(hover: hover) and (pointer: fine)").matches
-  );
-}
-
-function measureLayout(arena: HTMLElement, button: HTMLButtonElement) {
-  const parent = button.offsetParent instanceof HTMLElement ? button.offsetParent : arena;
-  const parentRect = parent.getBoundingClientRect();
-  const scaleX = parent.offsetWidth ? parentRect.width / parent.offsetWidth : 1;
-  const scaleY = parent.offsetHeight ? parentRect.height / parent.offsetHeight : 1;
-  const style = window.getComputedStyle(button);
-  const left = Number.parseFloat(style.left);
-  const top = Number.parseFloat(style.top);
-  // Layout offsets never contain the in-flight transform. The old calculation
-  // subtracted a rendered DOMRect from a target offset and counted easing twice.
-  const base = {
-    x: parentRect.left + (parent.clientLeft + (Number.isFinite(left) ? left : button.offsetLeft)) * scaleX,
-    y: parentRect.top + (parent.clientTop + (Number.isFinite(top) ? top : button.offsetTop)) * scaleY,
+  const damping = Math.exp(-9 * dt);
+  const nextVelocity = { x: (velocity.x + force.x * dt) * damping, y: (velocity.y + force.y * dt) * damping };
+  const speed = magnitude(nextVelocity);
+  if (speed > MAX_SPEED) { nextVelocity.x *= MAX_SPEED / speed; nextVelocity.y *= MAX_SPEED / speed; }
+  if (speed < 0.4 && influence < 0.02) { nextVelocity.x = 0; nextVelocity.y = 0; }
+  const next = {
+    x: clamp(position.x + nextVelocity.x * dt, bounds.left + EDGE_MARGIN, Math.max(bounds.left + EDGE_MARGIN, bounds.right - EDGE_MARGIN - button.width)),
+    y: clamp(position.y + nextVelocity.y * dt, bounds.top + EDGE_MARGIN, Math.max(bounds.top + EDGE_MARGIN, bounds.bottom - EDGE_MARGIN - button.height)),
   };
-  const rect = toEscapeRect(arena.getBoundingClientRect());
-  const viewport = window.visualViewport;
-  const viewportLeft = viewport?.offsetLeft ?? 0;
-  const viewportTop = viewport?.offsetTop ?? 0;
-  const bounds = {
-    left: Math.max(rect.left, viewportLeft),
-    top: Math.max(rect.top, viewportTop),
-    right: Math.min(rect.right, viewportLeft + (viewport?.width ?? window.innerWidth)),
-    bottom: Math.min(rect.bottom, viewportTop + (viewport?.height ?? window.innerHeight)),
-  };
-  return { base, scaleX: scaleX || 1, scaleY: scaleY || 1,
-    arena: { ...bounds, width: bounds.right - bounds.left, height: bounds.bottom - bounds.top } };
+  if (obstacle) {
+    const collision = sweptCollision(current, next, obstacle);
+    if (collision) {
+      const axis = collision.axis;
+      // Keep the entire rendered frame on the clear side of the contacted wall;
+      // retaining the tangent component creates sliding instead of a hard stop.
+      next[axis] = position[axis] + (next[axis] - position[axis]) * Math.max(0, collision.time - 0.0001);
+      nextVelocity[axis] = 0;
+    }
+  }
+  if (next.x === position.x) nextVelocity.x = 0;
+  if (next.y === position.y) nextVelocity.y = 0;
+  return { position: next, velocity: nextVelocity };
 }
 
-export function useNoEscape({
-  arenaRef,
-  buttonRef,
-  obstacleRef,
-  enabled,
-  reducedMotion = false,
-  onAttempt,
-  onStatus,
-}: UseNoEscapeOptions): UseNoEscapeResult {
-  const [offset, setOffset] = useState<EscapePoint>({ x: 0, y: 0 });
-  const offsetRef = useRef(offset);
-  const attemptsRef = useRef(0);
-  const animationFrameRef = useRef<number | null>(null);
-  const queuedPointerRef = useRef<EscapePoint | null>(null);
-  const approachArmedRef = useRef(true);
-  const lastEscapeRef = useRef(Number.NEGATIVE_INFINITY);
-  const suppressClickUntilRef = useRef(Number.NEGATIVE_INFINITY);
+export function useNoEscape({ arenaRef, buttonRef, obstacleRef, enabled, reducedMotion = false, onAttempt, onStatus }: UseNoEscapeOptions) {
+  const offsetRef = useRef<EscapePoint>({ x: 0, y: 0 });
+  const callbacks = useRef({ onAttempt, onStatus });
+  const handlers = useRef<{
+    down: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+    click: (event?: ReactMouseEvent<HTMLButtonElement>) => void;
+  }>({ down: () => {}, click: () => {} });
+  const attempts = useRef(0);
 
-  const announceAttempt = useCallback(() => {
-    attemptsRef.current += 1;
-    const attempt = attemptsRef.current;
-    onAttempt?.(attempt);
-    onStatus?.(STATUS_LINES[(attempt - 1) % STATUS_LINES.length]);
-    return attempt;
-  }, [onAttempt, onStatus]);
-
-  const escapeFrom = useCallback(
-    (pointer: EscapePoint, countAttempt: boolean) => {
-      const arena = arenaRef.current;
-      const button = buttonRef.current;
-      if (!enabled || !arena || !button) return;
-      const now = performance.now();
-      if (now - lastEscapeRef.current < ESCAPE_COOLDOWN_MS) return;
-      lastEscapeRef.current = now;
-
-      const attempt = countAttempt ? announceAttempt() : attemptsRef.current;
-      if (reducedMotion) return;
-      const buttonRect = toEscapeRect(button.getBoundingClientRect());
-      const layout = measureLayout(arena, button);
-      if (layout.arena.width < buttonRect.width + ARENA_PADDING * 2 ||
-        layout.arena.height < buttonRect.height + ARENA_PADDING * 2) return;
-      const target = chooseEscapePosition({
-        arena: layout.arena,
-        button: buttonRect,
-        pointer,
-        obstacle: obstacleRef?.current
-          ? toEscapeRect(obstacleRef.current.getBoundingClientRect())
-          : null,
-        attempt,
-        reducedMotion,
-      });
-
-      const next = {
-        x: (target.x - layout.base.x) / layout.scaleX,
-        y: (target.y - layout.base.y) / layout.scaleY,
-      };
-
-      if (
-        Math.abs(next.x - offsetRef.current.x) < 1 &&
-        Math.abs(next.y - offsetRef.current.y) < 1
-      ) {
-        return;
-      }
-
-      offsetRef.current = next;
-      setOffset(next);
-    },
-    [
-      announceAttempt,
-      arenaRef,
-      buttonRef,
-      enabled,
-      obstacleRef,
-      reducedMotion,
-    ],
-  );
-
-  const onArenaPointerMove = useCallback(
-    (event: ReactPointerEvent<HTMLElement>) => {
-      if (!enabled || reducedMotion || event.pointerType !== "mouse" || !hasFinePointer()) {
-        return;
-      }
-
-      const button = buttonRef.current;
-      if (!button) return;
-      const rect = button.getBoundingClientRect();
-      const center = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
-      const pointer = { x: event.clientX, y: event.clientY };
-      const pointerDistance = distance(center, pointer);
-      if (pointerDistance > REARM_RADIUS) {
-        approachArmedRef.current = true;
-        queuedPointerRef.current = null;
-        return;
-      }
-      if (pointerDistance > PROXIMITY_RADIUS || !approachArmedRef.current ||
-        performance.now() - lastEscapeRef.current < ESCAPE_COOLDOWN_MS) return;
-
-      approachArmedRef.current = false;
-      queuedPointerRef.current = pointer;
-      if (animationFrameRef.current !== null) return;
-      animationFrameRef.current = window.requestAnimationFrame(() => {
-        animationFrameRef.current = null;
-        const queued = queuedPointerRef.current;
-        queuedPointerRef.current = null;
-        if (queued) escapeFrom(queued, true);
-      });
-    },
-    [buttonRef, enabled, escapeFrom, reducedMotion],
-  );
-
-  const onNoPointerDown = useCallback(
-    (event: ReactPointerEvent<HTMLButtonElement>) => {
-      if (!enabled || (event.button !== undefined && event.button !== 0)) return;
-      event.preventDefault();
-      suppressClickUntilRef.current = performance.now() + 750;
-      approachArmedRef.current = false;
-      escapeFrom({ x: event.clientX, y: event.clientY }, true);
-    },
-    [enabled, escapeFrom],
-  );
-
-  const onNoClick = useCallback((event?: ReactMouseEvent<HTMLButtonElement>) => {
-    if (!enabled) return;
-    if (event?.detail !== 0 && performance.now() < suppressClickUntilRef.current) return;
-    // Keyboard and assistive-technology activation keep the focused control
-    // stationary. Pointer activation was already handled by pointerdown.
-    announceAttempt();
-  }, [announceAttempt, enabled]);
+  useEffect(() => { callbacks.current = { onAttempt, onStatus }; }, [onAttempt, onStatus]);
 
   useEffect(() => {
-    if (!enabled) return;
-    const arena = arenaRef.current;
     const button = buttonRef.current;
-    if (!arena || !button) return;
-    let resizeFrame: number | null = null;
-    let restoreFrame: number | null = null;
-    let previousTransition: string | null = null;
-    const restoreTransition = () => {
-      if (previousTransition !== null) button.style.transition = previousTransition;
-      previousTransition = null;
-      restoreFrame = null;
+    const arena = arenaRef.current;
+    if (!enabled || !button || !arena) return;
+    let frame: number | null = null;
+    let previousTime = 0;
+    let velocity: EscapePoint = { x: 0, y: 0 };
+    let pointer: (EscapePoint & { kind: "mouse" | "touch" }) | null = null;
+    let touchId: number | null = null;
+    let touchRelease = Infinity;
+    let armed = true;
+    let suppressClickUntil = -Infinity;
+
+    const announce = () => {
+      attempts.current += 1;
+      callbacks.current.onAttempt?.(attempts.current);
+      callbacks.current.onStatus?.(STATUS_LINES[(attempts.current - 1) % STATUS_LINES.length]);
     };
-    const constrain = () => {
-      resizeFrame = null;
-      const layout = measureLayout(arena, button);
-      const rect = toEscapeRect(button.getBoundingClientRect());
-      // A completely scrolled-off arena needs no escape position. Recheck when
-      // it reenters the viewport rather than pulling the button into content.
-      if (layout.arena.width < rect.width + ARENA_PADDING * 2 || layout.arena.height < rect.height + ARENA_PADDING * 2) return;
-      const x = clamp(layout.base.x + offsetRef.current.x * layout.scaleX,
-        layout.arena.left + ARENA_PADDING, layout.arena.right - ARENA_PADDING - rect.width);
-      const y = clamp(layout.base.y + offsetRef.current.y * layout.scaleY,
-        layout.arena.top + ARENA_PADDING, layout.arena.bottom - ARENA_PADDING - rect.height);
-      let next = { x: (x - layout.base.x) / layout.scaleX, y: (y - layout.base.y) / layout.scaleY };
-      const obstacle = obstacleRef?.current?.getBoundingClientRect();
-      if (obstacle && overlaps(candidateRect(x, y, rect), toEscapeRect(obstacle), OBSTACLE_GUTTER)) {
-        // Responsive layout changes may move YES under a previous target. This
-        // correction is immediate, so find a clear slot inside the new bounds.
-        const minX = layout.arena.left + ARENA_PADDING;
-        const maxX = layout.arena.right - ARENA_PADDING - rect.width;
-        const minY = layout.arena.top + ARENA_PADDING;
-        const maxY = layout.arena.bottom - ARENA_PADDING - rect.height;
-        const slots = [
-          { x: clamp(layout.base.x, minX, maxX), y: clamp(layout.base.y, minY, maxY) },
-          { x: minX, y: minY }, { x: maxX, y: minY },
-          { x: minX, y: maxY }, { x: maxX, y: maxY },
-        ];
-        const clear = slots.find((slot) => !overlaps(candidateRect(slot.x, slot.y, rect), toEscapeRect(obstacle), OBSTACLE_GUTTER));
-        if (!clear) return;
-        next = { x: (clear.x - layout.base.x) / layout.scaleX, y: (clear.y - layout.base.y) / layout.scaleY };
+    const geometry = () => {
+      const rect = button.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const left = viewport?.offsetLeft ?? 0;
+      const top = viewport?.offsetTop ?? 0;
+      const width = viewport?.width ?? (document.documentElement.clientWidth || window.innerWidth);
+      const height = viewport?.height ?? window.innerHeight;
+      // Transforms are written directly once per frame with no CSS easing.
+      // Subtracting that exact rendered offset leaves the live layout origin.
+      return { button: rect, origin: { x: rect.left - offsetRef.current.x, y: rect.top - offsetRef.current.y },
+        bounds: { left, top, width, height, right: left + width, bottom: top + height },
+        obstacle: obstacleRef?.current?.getBoundingClientRect() };
+    };
+    const tick = (now: number) => {
+      frame = null;
+      if (pointer?.kind === "touch" && touchId === null && now >= touchRelease) pointer = null;
+      const layout = geometry();
+      if (layout.bounds.width < layout.button.width + EDGE_MARGIN * 2 || layout.bounds.height < layout.button.height + EDGE_MARGIN * 2) return;
+      const result = stepEscape({ ...layout, pointer, velocity, delta: previousTime ? (now - previousTime) / 1000 : 1 / 60 });
+      velocity = result.velocity;
+      const offset = { x: result.position.x - layout.origin.x, y: result.position.y - layout.origin.y };
+      offsetRef.current = offset;
+      button.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
+      previousTime = now;
+      if (magnitude(velocity) > 0) frame = window.requestAnimationFrame(tick);
+      else previousTime = 0;
+    };
+    const start = () => { if (!reducedMotion && frame === null) frame = window.requestAnimationFrame(tick); };
+    const stop = () => {
+      pointer = null; touchId = null; velocity = { x: 0, y: 0 }; previousTime = 0;
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      frame = null;
+    };
+    const move = (event: PointerEvent) => {
+      if (reducedMotion) return;
+      if (event.pointerType === "touch" || event.pointerType === "pen") {
+        if (touchId !== event.pointerId) return;
+        pointer = { x: event.clientX, y: event.clientY, kind: "touch" };
+        start();
+        return;
       }
-      if (Math.abs(next.x - offsetRef.current.x) < 0.1 && Math.abs(next.y - offsetRef.current.y) < 0.1) return;
-      offsetRef.current = next;
-      // Resizing is a bounds correction, not a new escape: update immediately
-      // so the old animation cannot carry the button outside a narrowed card.
-      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
-      if (previousTransition === null) previousTransition = button.style.transition;
-      button.style.transition = "none";
-      button.style.transform = `translate3d(${next.x}px, ${next.y}px, 0)`;
-      setOffset(next);
-      restoreFrame = window.requestAnimationFrame(restoreTransition);
+      if (event.pointerType !== "mouse" || !window.matchMedia("(hover: hover) and (pointer: fine)").matches) return;
+      pointer = { x: event.clientX, y: event.clientY, kind: "mouse" };
+      const distance = distanceFromPointer(button.getBoundingClientRect(), pointer);
+      if (distance > INFLUENCE_RADIUS + 40) armed = true;
+      if (distance < INFLUENCE_RADIUS && armed) { armed = false; announce(); }
+      if (distance < INFLUENCE_RADIUS || magnitude(velocity) > 0) start();
     };
-    const schedule = () => {
-      if (resizeFrame === null) resizeFrame = window.requestAnimationFrame(constrain);
+    const release = (event: PointerEvent) => {
+      if (event.pointerId !== touchId) return;
+      touchId = null;
+      // A quick tap still gets a small continuous slip after the finger lifts.
+      touchRelease = performance.now() + (event.type === "pointercancel" ? 0 : 180);
+      start();
     };
-    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(schedule);
+    const leave = (event: PointerEvent) => { if (event.relatedTarget === null && pointer?.kind === "mouse") { pointer = null; start(); } };
+    const resize = () => { if (offsetRef.current.x || offsetRef.current.y) start(); };
+    const keyboard = (event: KeyboardEvent) => { if (["Tab", "Enter", " "].includes(event.key)) stop(); };
+    const visibility = () => { if (document.hidden) stop(); };
+
+    handlers.current = {
+      down: event => {
+        if (event.button !== undefined && event.button !== 0) return;
+        event.preventDefault();
+        suppressClickUntil = performance.now() + 750;
+        armed = false;
+        announce();
+        if (reducedMotion) return;
+        const isTouch = event.pointerType === "touch" || event.pointerType === "pen";
+        pointer = { x: event.clientX, y: event.clientY, kind: isTouch ? "touch" : "mouse" };
+        if (isTouch) {
+          touchId = event.pointerId; touchRelease = Infinity;
+          try { button.setPointerCapture(event.pointerId); } catch { /* A synthetic/a11y event may have no active pointer. */ }
+        }
+        start();
+      },
+      click: event => {
+        event?.preventDefault();
+        if (event?.detail !== 0 && performance.now() < suppressClickUntil) return;
+        // Keyboard/assistive activation stops motion and stays on this screen.
+        stop();
+        announce();
+      },
+    };
+
+    window.addEventListener("pointermove", move, { passive: true });
+    window.addEventListener("pointerup", release, { passive: true });
+    window.addEventListener("pointercancel", release, { passive: true });
+    window.addEventListener("pointerout", leave, { passive: true });
+    window.addEventListener("keydown", keyboard);
+    window.addEventListener("blur", stop);
+    window.addEventListener("resize", resize);
+    window.addEventListener("scroll", resize, { passive: true });
+    document.addEventListener("visibilitychange", visibility);
+    window.visualViewport?.addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("scroll", resize);
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(resize);
     observer?.observe(arena);
     observer?.observe(button);
-    window.addEventListener("resize", schedule);
-    window.addEventListener("scroll", schedule, { passive: true });
-    window.visualViewport?.addEventListener("resize", schedule);
     return () => {
+      stop();
+      handlers.current = { down: () => {}, click: () => {} };
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", release);
+      window.removeEventListener("pointercancel", release);
+      window.removeEventListener("pointerout", leave);
+      window.removeEventListener("keydown", keyboard);
+      window.removeEventListener("blur", stop);
+      window.removeEventListener("resize", resize);
+      window.removeEventListener("scroll", resize);
+      document.removeEventListener("visibilitychange", visibility);
+      window.visualViewport?.removeEventListener("resize", resize);
+      window.visualViewport?.removeEventListener("scroll", resize);
       observer?.disconnect();
-      window.removeEventListener("resize", schedule);
-      window.removeEventListener("scroll", schedule);
-      window.visualViewport?.removeEventListener("resize", schedule);
-      if (resizeFrame !== null) window.cancelAnimationFrame(resizeFrame);
-      if (restoreFrame !== null) window.cancelAnimationFrame(restoreFrame);
-      restoreTransition();
     };
-  }, [arenaRef, buttonRef, enabled, obstacleRef]);
+  }, [arenaRef, buttonRef, enabled, obstacleRef, reducedMotion]);
 
-  useEffect(() => {
-    return () => {
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
-      }
-      queuedPointerRef.current = null;
-    };
-  }, [enabled]);
-
-  useEffect(() => {
-    if (!enabled) {
-      attemptsRef.current = 0;
-      offsetRef.current = { x: 0, y: 0 };
-      approachArmedRef.current = true;
-      lastEscapeRef.current = Number.NEGATIVE_INFINITY;
-      suppressClickUntilRef.current = Number.NEGATIVE_INFINITY;
-      queueMicrotask(() => {
-        setOffset((prev) => (prev.x === 0 && prev.y === 0 ? prev : { x: 0, y: 0 }));
-      });
-    }
-  }, [enabled]);
-
-  return { offset, onArenaPointerMove, onNoPointerDown, onNoClick };
+  return {
+    onNoPointerDown: useCallback((event: ReactPointerEvent<HTMLButtonElement>) => handlers.current.down(event), []),
+    onNoClick: useCallback((event?: ReactMouseEvent<HTMLButtonElement>) => handlers.current.click(event), []),
+  };
 }

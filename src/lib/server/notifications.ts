@@ -1,4 +1,5 @@
 import "server-only";
+import type { LocationId } from "@/config/invitation";
 import { executeSql, type SqlExecutor } from "@/lib/db";
 import { formatReservationMessage, sendTelegramMessage } from "./telegram";
 
@@ -10,6 +11,7 @@ interface ClaimedDelivery {
   date: string | null;
   time: string | null;
   food: string | null;
+  location: LocationId | null;
   submitted_at: string | Date;
 }
 
@@ -26,12 +28,12 @@ export async function deliverNotification(id: string, options: {
     WHERE n.id=$1 AND n.status=$2
       AND EXISTS (SELECT 1 FROM invites i WHERE i.id=n.invite_id AND i.status='active')
     RETURNING n.*
-  ) SELECT c.id,c.kind,r.date,r.time,r.food,COALESCE(r.created_at,c.created_at) AS submitted_at
+  ) SELECT c.id,c.kind,r.date,r.time,r.food,r.location,COALESCE(r.created_at,c.created_at) AS submitted_at
     FROM claimed c LEFT JOIN reservation_revisions r ON r.id=c.revision_id`,
   [id, options.retryFailed ? "failed" : "pending"]);
   if (!delivery) return "not_claimed";
   const text = delivery.kind === "invitation_opened" ? PRIVATE_OPEN_MESSAGE :
-    formatReservationMessage(delivery.date!, delivery.time!, delivery.food!,
+    formatReservationMessage(delivery.date!, delivery.time!, delivery.food!, delivery.location,
       delivery.kind === "reservation_updated", new Date(delivery.submitted_at));
   const result = await (options.send ?? sendTelegramMessage)(text);
   // Failure to persist this result leaves 'sending'; manual retries cannot

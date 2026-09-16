@@ -34,12 +34,10 @@ export function QuestionStage({ reducedMotion, onYes, onNoAttempt, disabled = fa
       <span className={styles.headingFlower} aria-hidden="true">🌸</span> Will you go on a<br />
       <em>date with me?</em> <span className={styles.headingFlower} aria-hidden="true">🌸</span>
     </h1>
-    <p className={styles.questionSupport}>The face above is part of my strategy.</p>
-    <div ref={arenaRef} className={styles.choiceArena} onPointerMove={escape.onArenaPointerMove} data-testid="choice-arena">
+    <div ref={arenaRef} className={styles.choiceArena} data-testid="choice-arena">
       <button ref={yesRef} type="button" disabled={disabled} className={styles.yesButton} onClick={onYes}>YES ♡</button>
       <button ref={noRef} type="button" disabled={disabled} className={styles.noButton} data-testid="no-button"
-        aria-describedby="no-button-status" onPointerDown={escape.onNoPointerDown} onClick={escape.onNoClick}
-        style={{ transform: `translate3d(${escape.offset.x}px, ${escape.offset.y}px, 0)` }}>NO</button>
+        aria-describedby="no-button-status" onPointerDown={escape.onNoPointerDown} onClick={escape.onNoClick}>NO</button>
     </div>
     <p id="no-button-status" className={styles.escapeStatus} aria-live="polite">{status || "no pressure. just one extremely hopeful pug."}</p>
   </section>;

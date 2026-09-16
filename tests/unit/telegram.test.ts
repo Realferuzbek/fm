@@ -12,13 +12,18 @@ describe("Telegram formatter and bounded sending", () => {
   it("uses the exact opened milestone and booking wording with selected values and timestamp", () => {
     expect(PRIVATE_OPEN_MESSAGE).toBe("👀 Your private invitation was opened.");
     const date = new Date("2026-09-15T10:00:00Z");
-    const text = formatReservationMessage("2099-08-19", "19:30", "osh", false, date);
+    const text = formatReservationMessage("2099-08-19", "19:30", "osh", "LRC", false, date);
     expect(text).toContain("💌 SHE SAID YES.");
     expect(text).toContain("🍚 Osh");
+    expect(text).toContain("Time: 19:30");
+    expect(text).toContain("Meeting spot: 📍 LRC");
+    expect(text).not.toMatch(/\b(?:AM|PM)\b/);
     expect(text).toContain("Tashkent time");
     expect(text).toContain("Status: ✅ Date successfully arranged");
     expect(text).toContain(date.toISOString());
-    expect(formatReservationMessage("2099-08-19", "20:00", "lavash", true)).toContain("Date plans updated.");
+    const update = formatReservationMessage("2099-08-19", "20:00", "lavash", "Sport Hall", true);
+    expect(update).toContain("Date plans updated.");
+    expect(update).toContain("Meeting spot: 📍 Sport Hall");
   });
 
   it("sends plain text with a bounded request and captures the message ID", async () => {

@@ -1,5 +1,5 @@
 import "server-only";
-import { FOOD_OPTIONS, formatDateTimeInTashkent } from "@/config/invitation";
+import { FOOD_OPTIONS, formatDateTimeInTashkent, type LocationId } from "@/config/invitation";
 
 export interface TelegramResult {
   status: "sent" | "failed" | "unknown";
@@ -40,11 +40,12 @@ export async function sendTelegramMessage(text: string): Promise<TelegramResult>
   }
 }
 
-export function formatReservationMessage(date: string, time: string, food: string, isUpdate: boolean, submittedAt = new Date()) {
+export function formatReservationMessage(date: string, time: string, food: string, location: LocationId | null, isUpdate: boolean, submittedAt = new Date()) {
   const { dateLabel, timeLabel, timeZoneLabel } = formatDateTimeInTashkent(date, time);
   const option = FOOD_OPTIONS.find((item) => item.id === food);
   return [isUpdate ? "💌 Date plans updated." : "💌 SHE SAID YES.", "",
     `Date: ${dateLabel}`, `Time: ${timeLabel} (${timeZoneLabel})`,
-    `Food: ${option ? `${option.emoji} ${option.label}` : food}`, "",
+    `Food: ${option ? `${option.emoji} ${option.label}` : food}`,
+    ...(location ? [`Meeting spot: 📍 ${location}`] : []), "",
     "Status: ✅ Date successfully arranged", `Timestamp: ${submittedAt.toISOString()}`].join("\n");
 }

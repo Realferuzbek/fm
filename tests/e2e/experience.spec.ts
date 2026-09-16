@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { finalVisible, isolateEvents, noHorizontalOverflow, openQuestion, settle, toFinal, toFood, toSchedule } from "./helpers";
+import { chooseLocation, finalVisible, isolateEvents, noHorizontalOverflow, openQuestion, settle, toFinal, toFood, toSchedule } from "./helpers";
 
 test.beforeEach(async ({ page }) => { await isolateEvents(page); });
 
@@ -12,6 +12,8 @@ test("full public story has exact copy, real selected time, MP3 and no private w
   page.on("request", request => { if (request.url().includes("/api/reservation")) privateWrites.push(request.url()); });
   await openQuestion(page);
   await expect(page.getByRole("heading", { name: /Will you go on a\s*date with me/ })).toBeVisible();
+  await expect(page.getByText("The face above is part of my strategy.")).toHaveCount(0);
+  await expect(page.getByText("a little courage. a lot of hope.")).toHaveCount(0);
   await expect(page.getByRole("img")).toHaveAttribute("alt", /pug|pet|wingman/i);
   await toSchedule(page);
   await expect(page.getByText("I was so ready for you to say no 😭")).not.toBeVisible();
@@ -19,14 +21,24 @@ test("full public story has exact copy, real selected time, MP3 and no private w
   await expect(submit).toBeDisabled();
   await page.locator('input[type="date"]').fill("2099-10-24");
   await expect(submit).toBeDisabled();
-  await page.locator('input[type="time"]').fill("18:45");
+  const timePicker = page.getByRole("combobox", { name: "Your time" });
+  await expect(timePicker.locator("option")).toHaveCount(24);
+  expect(await timePicker.locator("option:not([disabled])").allTextContents()).toEqual([
+    "09:00", "09:30", "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30", "14:00", "14:30",
+    "15:00", "15:30", "16:00", "16:30", "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00",
+  ]);
+  await timePicker.selectOption("17:30");
   await expect(submit).toBeEnabled();
   await submit.click();
   for (const food of ["Donar", "Lavash", "Shashlik", "Taco", "Lag'mon", "Osh"]) await expect(page.getByRole("button", { name: new RegExp(food) })).toBeVisible();
+  await expect(page.getByText(/comfortingly correct|wrapped with intention|a very serious choice|tiny fiesta energy|noodle-level cozy|legendary, honestly/)).toHaveCount(0);
   await page.getByRole("button", { name: /Osh/ }).click();
+  for (const location of ["IB", "LRC", "Lyceum", "SHB", "ATB", "Sport Hall"]) await expect(page.getByRole("button", { name: location, exact: true })).toBeVisible();
+  await chooseLocation(page);
   await finalVisible(page);
-  await expect(page.getByText("6:45 PM", { exact: true })).toBeVisible();
-  await expect(page.getByText("reservation status: suspiciously successful ✅", { exact: true })).toBeVisible();
+  await expect(page.getByText("17:30", { exact: true })).toBeVisible();
+  await expect(page.locator('[class*="ticketDetails"]')).toContainText("📍 LRC");
+  await expect(page.getByText(/\b(?:AM|PM)\b/)).toHaveCount(0);
   const telegram = page.getByRole("link", { name: "Back to him ♡", exact: true });
   await expect(telegram).toHaveAttribute("href", "https://t.me/realferuzbek");
   await expect(telegram).toHaveAttribute("target", "_blank");
@@ -38,7 +50,7 @@ test("full public story has exact copy, real selected time, MP3 and no private w
 test("past dates remain disabled and future dates recover", async ({ page }) => {
   await openQuestion(page); await toSchedule(page);
   await page.locator('input[type="date"]').fill("2000-01-01");
-  await page.locator('input[type="time"]').fill("12:00");
+  await page.getByRole("combobox", { name: "Your time" }).selectOption("12:00");
   await expect(page.getByRole("button", { name: "Set the date ♡" })).toBeDisabled();
   await page.locator('input[type="date"]').fill("2099-10-24");
   await expect(page.getByRole("button", { name: "Set the date ♡" })).toBeEnabled();
@@ -49,6 +61,7 @@ for (const food of ["Donar", "Lavash", "Shashlik", "Taco", "Lag'mon", "Osh"]) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await openQuestion(page); await toFood(page);
     await page.getByRole("button", { name: new RegExp(food) }).click();
+    await chooseLocation(page);
     await finalVisible(page);
     await expect(page.locator('[class*="ticketDetails"]')).toContainText(food);
   });
@@ -82,7 +95,7 @@ test("reduced motion disables decorative motion and moving NO", async ({ page })
   await toFinal(page);
 });
 
-test("all five stages pass accessibility and overflow checks", async ({ page }) => {
+test("all six stages pass accessibility and overflow checks", async ({ page }) => {
   test.setTimeout(75_000);
   await openQuestion(page);
   const audit = async () => {
@@ -95,18 +108,19 @@ test("all five stages pass accessibility and overflow checks", async ({ page }) 
   await expect(page.getByRole("button", { name: "okay okay!" })).toBeVisible(); await audit();
   await expect(page.getByText("I was so ready for you to say no 😭")).toBeVisible();
   await page.getByRole("button", { name: "okay okay!" }).click(); await audit();
-  await page.locator('input[type="date"]').fill("2099-10-24"); await page.locator('input[type="time"]').fill("19:00");
+  await page.locator('input[type="date"]').fill("2099-10-24"); await page.getByRole("combobox", { name: "Your time" }).selectOption("19:00");
   await page.getByRole("button", { name: "Set the date ♡" }).click(); await audit();
-  await page.getByRole("button", { name: /Osh/ }).click(); await finalVisible(page); await audit();
+  await page.getByRole("button", { name: /Osh/ }).click(); await expect(page.getByRole("heading", { name: /Where should/ })).toBeVisible(); await audit();
+  await chooseLocation(page); await finalVisible(page); await audit();
 });
 
 test("unfinished schedule survives reload; completed replay starts at question", async ({ page }) => {
   await openQuestion(page); await toSchedule(page);
-  await page.locator('input[type="date"]').fill("2099-10-24"); await page.locator('input[type="time"]').fill("19:00");
+  await page.locator('input[type="date"]').fill("2099-10-24"); await page.getByRole("combobox", { name: "Your time" }).selectOption("19:00");
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.locator('input[type="date"]')).toHaveValue("2099-10-24");
-  await expect(page.locator('input[type="time"]')).toHaveValue("19:00");
-  await page.getByRole("button", { name: "Set the date ♡" }).click(); await page.getByRole("button", { name: /Osh/ }).click(); await finalVisible(page);
+  await expect(page.getByRole("combobox", { name: "Your time" })).toHaveValue("19:00");
+  await page.getByRole("button", { name: "Set the date ♡" }).click(); await page.getByRole("button", { name: /Osh/ }).click(); await chooseLocation(page); await finalVisible(page);
   await page.reload({ waitUntil: "domcontentloaded" });
   await expect(page.getByRole("button", { name: "YES ♡", exact: true })).toBeEnabled();
 });
@@ -124,7 +138,7 @@ test("milestones include timestamps and final CTA navigation flushes the last ev
   expect(telegramPage.url()).toBe("https://t.me/realferuzbek");
   await expect.poll(() => batches.flatMap(batch => batch.events).map(event => event.name)).toContain("telegram_clicked");
   const events = batches.flatMap(batch => batch.events);
-  for (const name of ["visit_started", "screen_1_viewed", "no_button_attempted", "yes_clicked", "screen_2_viewed", "okay_clicked", "date_screen_viewed", "date_selected", "time_selected", "date_confirmed", "food_screen_viewed", "food_selected", "final_screen_viewed", "telegram_clicked"]) expect(events.some(event => event.name === name), name).toBe(true);
+  for (const name of ["visit_started", "screen_1_viewed", "no_button_attempted", "yes_clicked", "screen_2_viewed", "okay_clicked", "date_screen_viewed", "date_selected", "time_selected", "date_confirmed", "food_screen_viewed", "food_selected", "location_screen_viewed", "location_selected", "final_screen_viewed", "telegram_clicked"]) expect(events.some(event => event.name === name), name).toBe(true);
   expect(events.every(event => Number.isFinite(Date.parse(event.occurredAt)) && /^[\da-f-]{36}$/i.test(event.eventId))).toBe(true);
   expect(new Set(events.map(event => event.eventId)).size).toBe(events.length);
 });

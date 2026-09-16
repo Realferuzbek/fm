@@ -17,8 +17,8 @@ import { GET as sessionGet } from "@/app/api/invitation/session/route";
 import { POST as resolvePost } from "@/app/api/invitation/resolve/route";
 
 const inviteId = "00000000-0000-4000-8000-000000000001";
-const reservation = { id: randomUUID(), date: "2099-08-19", time: "19:30", food: "osh", version: 1 };
-const input = () => ({ inviteId, requestId: randomUUID(), expectedVersion: 0, date: reservation.date, time: reservation.time, food: reservation.food });
+const reservation = { id: randomUUID(), date: "2099-08-19", time: "19:30", food: "osh", location: "LRC", version: 1 };
+const input = () => ({ inviteId, requestId: randomUUID(), expectedVersion: 0, date: reservation.date, time: reservation.time, food: reservation.food, location: reservation.location });
 function request(path: string, body: unknown, origin = "https://example.com") {
   return new Request(`https://example.com/api/${path}`, { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify(body) });
 }

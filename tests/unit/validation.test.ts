@@ -3,11 +3,11 @@ import { describe, expect, it } from "vitest";
 import { parseReservationInput, parseEventBatch, parseInviteInput, InputValidationError } from "@/lib/server/validation";
 
 describe("strict server inputs", () => {
-  const valid = () => ({ inviteId: randomUUID(), requestId: randomUUID(), expectedVersion: 0, date: "2099-08-19", time: "19:30", food: "osh" });
+  const valid = () => ({ inviteId: randomUUID(), requestId: randomUUID(), expectedVersion: 0, date: "2099-08-19", time: "19:30", food: "osh", location: "LRC" });
   it("accepts stable request IDs and versioned booking inputs", () => {
     const input = valid(); expect(parseReservationInput(input)).toEqual(input);
   });
-  it.each([{ date: "2099-02-31" }, { time: "25:00" }, { food: "invalid" }, { expectedVersion: -1 }, { requestId: "bad" }, { inviteId: "bad" }, { inviteId: undefined }, { private: true }])("rejects invalid booking fields %j", (fields) => {
+  it.each([{ date: "2099-02-31" }, { time: "09:13" }, { time: "20:30" }, { time: "08:30" }, { food: "invalid" }, { location: "Other" }, { location: undefined }, { expectedVersion: -1 }, { requestId: "bad" }, { inviteId: "bad" }, { inviteId: undefined }, { private: true }])("rejects invalid booking fields %j", (fields) => {
     expect(() => parseReservationInput({ ...valid(), ...fields })).toThrow(InputValidationError);
   });
   it("allows historical syntax through so Postgres can reconcile retries before future validation", () => {

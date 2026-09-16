@@ -1,4 +1,7 @@
+import { sql } from "drizzle-orm";
+import type { LocationId } from "@/config/invitation";
 import {
+  check,
   index,
   integer,
   pgEnum,
@@ -42,12 +45,16 @@ export const reservations = pgTable(
     date: varchar("date", { length: 10 }).notNull(),
     time: varchar("time", { length: 5 }).notNull(),
     food: varchar("food", { length: 32 }).notNull(),
+    location: varchar("location", { length: 16 }).$type<LocationId>(),
     timeZone: varchar("time_zone", { length: 64 }).notNull().default("Asia/Tashkent"),
     version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
-  (table) => [uniqueIndex("reservations_invite_id_unique").on(table.inviteId)]
+  (table) => [
+    uniqueIndex("reservations_invite_id_unique").on(table.inviteId),
+    check("reservations_location_check", sql`${table.location} IN ('IB','LRC','Lyceum','SHB','ATB','Sport Hall')`),
+  ]
 );
 
 /**
@@ -113,11 +120,13 @@ export const reservationRevisions = pgTable("reservation_revisions", {
   date: varchar("date", { length: 10 }).notNull(),
   time: varchar("time", { length: 5 }).notNull(),
   food: varchar("food", { length: 32 }).notNull(),
+  location: varchar("location", { length: 16 }).$type<LocationId>(),
   timeZone: varchar("time_zone", { length: 64 }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   uniqueIndex("reservation_revisions_version_unique").on(table.reservationId, table.version),
   uniqueIndex("reservation_revisions_request_unique").on(table.reservationId, table.requestId),
+  check("reservation_revisions_location_check", sql`${table.location} IN ('IB','LRC','Lyceum','SHB','ATB','Sport Hall')`),
 ]);
 
 export const notificationDeliveries = pgTable("notification_deliveries", {
@@ -141,6 +150,10 @@ export const reservationRequests = pgTable("reservation_requests", {
   date: varchar("date", { length: 10 }).notNull(),
   time: varchar("time", { length: 5 }).notNull(),
   food: varchar("food", { length: 32 }).notNull(),
+  location: varchar("location", { length: 16 }).$type<LocationId>(),
   revisionId: uuid("revision_id").references(() => reservationRevisions.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-}, (table) => [primaryKey({ columns: [table.inviteId, table.requestId] })]);
+}, (table) => [
+  primaryKey({ columns: [table.inviteId, table.requestId] }),
+  check("reservation_requests_location_check", sql`${table.location} IN ('IB','LRC','Lyceum','SHB','ATB','Sport Hall')`),
+]);
