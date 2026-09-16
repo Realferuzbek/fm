@@ -1,104 +1,53 @@
 "use client";
 
-import { EVENT_NAMES } from "@/config/invitation";
 import { useCallback, useEffect, useRef } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { EVENT_NAMES, isUuidValue, type AnalyticsEventName } from "@/config/invitation";
+import type { InvitationEventPayload, VisitorMode } from "../types";
 
-import type { InvitationEventPayload } from "../types";
-
-export type InvitationEventName = (typeof EVENT_NAMES)[number];
-
-const ANALYTICS_SESSION_KEY = "date-invitation:analytics-session";
-
-function createId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-
-  // This is a pseudonymous, client-only correlation ID—not an identity signal.
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
-}
-
-function getSessionId(): string {
-  if (typeof window === "undefined") return "server-render";
-
-  try {
-    const existing = window.sessionStorage.getItem(ANALYTICS_SESSION_KEY);
-    if (existing) return existing;
-    const created = createId();
-    window.sessionStorage.setItem(ANALYTICS_SESSION_KEY, created);
-    return created;
-  } catch {
-    return createId();
-  }
-}
-
-function isAllowedEvent(name: string): name is InvitationEventName {
-  return (EVENT_NAMES as readonly string[]).includes(name);
-}
-
-export interface EventTracker {
-  track: (name: InvitationEventName) => void;
-  sessionId: string;
-}
-
-/**
- * Lightweight, allowlisted milestone tracking. It deliberately has no generic
- * properties argument, preventing selection data or device metadata from
- * quietly becoming analytics payloads.
- */
-export function useEventTracking(): EventTracker {
-  const sessionIdRef = useRef<string>("");
-  const [sessionId] = useState(() => getSessionId());
-
-  if (!sessionIdRef.current) sessionIdRef.current = getSessionId();
-
-  const track = useCallback((name: InvitationEventName) => {
-    if (!isAllowedEvent(name) || typeof window === "undefined") return;
-
-    const payload: InvitationEventPayload = {
-      eventId: createId(),
-      sessionId: sessionIdRef.current,
-      sessionId,
-      name,
-      occurredAt: new Date().toISOString(),
-    };
-    const body = JSON.stringify(payload);
-
-    // Beacon is best for transition/unload-safe telemetry. The fetch fallback
-    // covers browsers that do not implement it without exposing credentials.
-    if (typeof navigator !== "undefined" && "sendBeacon" in navigator) {
-      const accepted = navigator.sendBeacon(
-        "/api/events",
-        new Blob([body], { type: "application/json" }),
-      );
-      if (accepted) return;
+export function useEventTracking(mode: VisitorMode, inviteId: string | null) {
+  const queue = useRef<InvitationEventPayload[]>([]);
+  const scope = mode === "private" && inviteId ? "private:" + inviteId : "public";
+  const session = useRef({ scope: "", id: "" });
+  const started = useRef(new Set<string>());
+  const ready = mode === "public" || mode === "private";
+  const getSessionId = useCallback(() => {
+    if (session.current.scope !== scope) {
+      let id: string | null = null;
+      try { id = sessionStorage.getItem("invitation:visit:" + scope); } catch { /* optional */ }
+      if (!isUuidValue(id)) id = crypto.randomUUID();
+      try { sessionStorage.setItem("invitation:visit:" + scope, id); } catch { /* optional */ }
+      session.current = { scope, id };
     }
-
-    void fetch("/api/events", {
-      method: "POST",
-      credentials: "same-origin",
-      keepalive: true,
-      headers: { "content-type": "application/json" },
-      body,
-    }).catch(() => {
-      // Tracking must never make the invitation feel broken.
-    });
-  }, []);
-  }, [sessionId]);
-
-  return { track, sessionId: sessionIdRef.current };
-  return { track, sessionId };
-}
-
-/** Call once per mounted experience; a view is a useful, non-invasive event. */
-export function useInitialInvitationEvents(track: (name: InvitationEventName) => void): void {
-  const didTrackRef = useRef(false);
-
+    return session.current.id;
+  }, [scope]);
+  const flush = useCallback((leaving = false) => {
+    if (!ready || !queue.current.length) return;
+    const events = queue.current.splice(0, 20);
+    const body = JSON.stringify({ mode, ...(mode === "private" ? { inviteId } : {}), sessionId: getSessionId(), events });
+    if (leaving && navigator.sendBeacon?.("/api/events", new Blob([body], { type: "application/json" }))) return;
+    void fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true })
+      .then(response => { if (!response.ok && response.status >= 500) queue.current.unshift(...events); })
+      .catch(() => { queue.current.unshift(...events); })
+      .finally(() => { queue.current = queue.current.slice(-60); });
+  }, [mode, inviteId, ready, getSessionId]);
+  const track = useCallback((name: AnalyticsEventName) => {
+    if (!ready || !EVENT_NAMES.includes(name)) return;
+    queue.current.push({ eventId: crypto.randomUUID(), name, occurredAt: new Date().toISOString() });
+    if (name === "telegram_clicked") flush(true);
+    else if (name === "visit_started" || queue.current.length >= 12) flush();
+  }, [ready, flush]);
   useEffect(() => {
-    if (didTrackRef.current) return;
-    didTrackRef.current = true;
-    track("visit_started");
-    track("screen_1_viewed");
-  }, [track]);
+    if (!ready) return;
+    if (!started.current.has(scope)) {
+      started.current.add(scope);
+      track("visit_started");
+    }
+    const timer = setInterval(flush, 2000);
+    const hide = () => { if (document.visibilityState === "hidden") flush(true); };
+    const leave = () => flush(true);
+    document.addEventListener("visibilitychange", hide);
+    window.addEventListener("pagehide", leave);
+    return () => { clearInterval(timer); document.removeEventListener("visibilitychange", hide); window.removeEventListener("pagehide", leave); flush(true); };
+  }, [scope, ready, flush, track]);
+  return { track };
 }

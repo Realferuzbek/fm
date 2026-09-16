@@ -1,72 +1,60 @@
 import { z } from "zod";
+import { EVENT_NAMES, FOOD_OPTIONS, isValidDateValue, isValidTimeValue } from "@/config/invitation";
+import { ApiError } from "./security";
 
-import {
-  EVENT_NAMES,
-  FOOD_OPTIONS,
-  INVITATION_CONFIG,
-  isFutureTashkentDateTime,
-  isValidDateValue,
-  isValidTimeValue,
-  type AnalyticsEventName,
-  type FoodId
-} from "@/config/invitation";
-
-export const foodOptions = FOOD_OPTIONS.map((option) => option.id) as [FoodId, ...FoodId[]];
-export const eventNames = EVENT_NAMES as [AnalyticsEventName, ...AnalyticsEventName[]];
-export const eventNames = EVENT_NAMES as unknown as [AnalyticsEventName, ...AnalyticsEventName[]];
-
-export class InputValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "InputValidationError";
-  }
+export class InputValidationError extends ApiError {
+  constructor(message: string) { super(422, "invalid_input", message); }
 }
 
-export const reservationInputSchema = z
-  .object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    time: z.string().regex(/^\d{2}:\d{2}$/),
-    food: z.enum(foodOptions)
-  })
-  .strict();
-
+export const reservationInputSchema = z.object({
+  inviteId: z.uuid(),
+  date: z.string().refine(isValidDateValue),
+  time: z.string().refine(isValidTimeValue),
+  food: z.enum(FOOD_OPTIONS.map((food) => food.id)),
+  requestId: z.uuid(),
+  expectedVersion: z.number().int().min(0).max(2147483646),
+}).strict();
 export type ReservationInput = z.infer<typeof reservationInputSchema>;
 
+// Future-time validation happens atomically in Postgres AFTER checking retries.
 export function parseReservationInput(input: unknown): ReservationInput {
   const parsed = reservationInputSchema.safeParse(input);
-  if (!parsed.success || !isValidDateValue(parsed.data.date) || !isValidTimeValue(parsed.data.time)) {
-    throw new InputValidationError("Choose a valid date, time, and food option.");
-  }
-
-  if (!isFutureTashkentDateTime(parsed.data.date, parsed.data.time)) {
-    throw new InputValidationError(`Please choose a future date and time in ${INVITATION_CONFIG.timeZone}.`);
-  }
-
+  if (!parsed.success) throw new InputValidationError("Choose a valid date, time, and food option.");
   return parsed.data;
 }
 
-export const eventInputSchema = z
-  .object({
-    eventId: z.string().min(16).max(64).regex(/^[A-Za-z0-9_-]+$/),
-    sessionId: z.string().min(16).max(128).regex(/^[A-Za-z0-9_-]+$/),
-    name: z.enum(eventNames),
-    occurredAt: z.string().datetime({ offset: true })
-  })
-  .strict();
-
+const opaqueId = z.uuid();
+export const eventInputSchema = z.object({
+  eventId: opaqueId,
+  name: z.enum(EVENT_NAMES),
+  occurredAt: z.string().datetime({ offset: true }),
+}).strict();
 export type EventInput = z.infer<typeof eventInputSchema>;
+const eventBatchFields = {
+  sessionId: opaqueId,
+  events: z.array(eventInputSchema).min(1).max(20),
+};
+export const eventBatchSchema = z.discriminatedUnion("mode", [
+  z.object({ mode: z.literal("public"), ...eventBatchFields }).strict(),
+  z.object({ mode: z.literal("private"), inviteId: z.uuid(), ...eventBatchFields }).strict(),
+]);
+export type EventBatch = z.infer<typeof eventBatchSchema>;
 
-export function parseEventInput(input: unknown): EventInput {
-  const parsed = eventInputSchema.safeParse(input);
+export function parseEventBatch(input: unknown): EventBatch {
+  const parsed = eventBatchSchema.safeParse(input);
   if (!parsed.success) throw new InputValidationError("Event payload is not valid.");
-
-  const occurredAt = new Date(parsed.data.occurredAt).getTime();
   const now = Date.now();
-  // A generous client-clock tolerance prevents accidental bad analytics while
-  // still rejecting arbitrary historical/future timestamp payloads.
-  if (!Number.isFinite(occurredAt) || occurredAt < now - 31 * 24 * 60 * 60 * 1_000 || occurredAt > now + 24 * 60 * 60 * 1_000) {
-    throw new InputValidationError("Event timestamp is outside the accepted range.");
+  for (const event of parsed.data.events) {
+    const occurredAt = Date.parse(event.occurredAt);
+    if (occurredAt < now - 31 * 86400000 || occurredAt > now + 86400000) {
+      throw new InputValidationError("Event timestamp is outside the accepted range.");
+    }
   }
+  return parsed.data;
+}
 
+export function parseInviteInput(input: unknown) {
+  const parsed = z.object({ token: z.string().regex(/^[A-Za-z0-9_-]{43}$/) }).strict().safeParse(input);
+  if (!parsed.success) throw new ApiError(400, "invalid_invite_token", "The invitation link is not valid.");
   return parsed.data;
 }

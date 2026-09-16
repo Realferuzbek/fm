@@ -12,6 +12,10 @@ export function consumeRateLimit(key: string, limit: number, windowMs: number) {
   const existing = buckets.get(key);
 
   if (!existing || existing.resetAt <= now) {
+    if (!existing && buckets.size >= 2_000) {
+      const oldest = buckets.keys().next().value;
+      if (oldest) buckets.delete(oldest);
+    }
     buckets.set(key, { count: 1, resetAt: now + windowMs });
     if (buckets.size > 2_000) {
       for (const [bucketKey, bucket] of buckets) {

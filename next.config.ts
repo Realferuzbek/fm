@@ -8,7 +8,7 @@ const securityHeaders = [
     value: [
       "default-src 'self'",
       "base-uri 'self'",
-      "connect-src 'self' ws: wss:",
+      isDev ? "connect-src 'self' ws: wss:" : "connect-src 'self'",
       "font-src 'self'",
       "form-action 'self'",
       "frame-ancestors 'none'",
@@ -16,8 +16,7 @@ const securityHeaders = [
       "media-src 'self'",
       "object-src 'none'",
       `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-      "style-src 'self' 'unsafe-inline'",
-      ...(isDev ? [] : ["upgrade-insecure-requests"])
+      "style-src 'self' 'unsafe-inline'"
     ].join("; ")
   },
   { key: "Referrer-Policy", value: "no-referrer" },
@@ -29,6 +28,7 @@ const securityHeaders = [
 const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+  devIndicators: false,
   images: {
     formats: ["image/avif", "image/webp"]
   },

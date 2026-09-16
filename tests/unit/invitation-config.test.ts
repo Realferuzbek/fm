@@ -4,6 +4,7 @@ import {
   EVENT_NAMES,
   FOOD_OPTIONS,
   INVITATION_CONFIG,
+  assetUrl,
   formatDateTimeInTashkent,
   isFutureTashkentDateTime,
   isValidDateValue,
@@ -38,6 +39,12 @@ describe("invitation configuration", () => {
     expect(INVITATION_CONFIG.assetPaths.backgroundAudio).toMatch(/^\/assets\/audio\//);
     expect(INVITATION_CONFIG.telegramUrl).toBe("https://t.me/realferuzbek");
     expect(INVITATION_CONFIG.timeZone).toBe("Asia/Tashkent");
+  });
+
+  it("encodes configured filenames safely without changing their path structure", () => {
+    expect(assetUrl("/assets/images/a photo, with (heart).png")).toBe(
+      "/assets/images/a%20photo%2C%20with%20(heart).png",
+    );
   });
 
   it("formats the planned time without interpreting it in the visitor's browser timezone", () => {

@@ -1,92 +1,27 @@
-"use client";
-
-import { FOOD_OPTIONS, INVITATION_CONFIG, formatDateTimeInTashkent } from "@/config/invitation";
+import { FOOD_OPTIONS, INVITATION_CONFIG, formatDateTimeInTashkent, type FoodId } from "@/config/invitation";
 import styles from "../InvitationExperience.module.css";
 
-interface FinalStageProps {
-  date: string;
-  time: string;
-  foodId: string | null;
-  onTelegramClick: () => void;
-}
-
-/**
- * Stage 5: The final reveal.
- * Displays date, time, and food summary with the "Back to him ♡" Telegram CTA.
- */
-export function FinalStage({
-  date,
-  time,
-  foodId,
-  onTelegramClick,
-}: FinalStageProps) {
-  const { dateLabel, timeLabel, timeZoneLabel } = formatDateTimeInTashkent(date, time);
-  const foodOption = FOOD_OPTIONS.find((f) => f.id === foodId);
-
-  return (
-    <div className={styles.stage}>
-      <div className={styles.finalEmoji} aria-hidden="true">
-        🎉
-      </div>
-      <p className={styles.eyebrow}>it is officially happening</p>
-      <h2 className={styles.finalHeading} tabIndex={-1} data-stage-heading>
-        It&apos;s a date! ♡
-      </h2>
-
-      <div className={styles.summaryCard}>
-        <div className={styles.summaryRow}>
-          <span className={styles.summaryIcon} aria-hidden="true">
-            📅
-          </span>
-          <div>
-            <div className={styles.summaryLabel}>Date</div>
-            <div className={styles.summaryValue}>{dateLabel}</div>
-          </div>
-        </div>
-
-        <div className={styles.summaryRow}>
-          <span className={styles.summaryIcon} aria-hidden="true">
-            ⏰
-          </span>
-          <div>
-            <div className={styles.summaryLabel}>Time</div>
-            <div className={styles.summaryValue}>
-              {timeLabel}{" "}
-              <span className={styles.summaryValueSmall}>({timeZoneLabel})</span>
-            </div>
-          </div>
-        </div>
-
-        <div className={styles.summaryRow}>
-          <span className={styles.summaryIcon} aria-hidden="true">
-            {foodOption ? foodOption.emoji : "🍴"}
-          </span>
-          <div>
-            <div className={styles.summaryLabel}>Menu</div>
-            <div className={styles.summaryValue}>
-              {foodOption ? foodOption.label : "Chef's Surprise"}
-            </div>
-            {foodOption && (
-              <div className={styles.summaryValueSmall}>{foodOption.detail}</div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <a
-        href={INVITATION_CONFIG.telegramUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className={styles.telegramButton}
-        onClick={onTelegramClick}
-      >
-        Back to him ♡
-      </a>
-
-      <p className={styles.finalFooter}>
-        Can&apos;t wait to see you ✨
-      </p>
+export function FinalStage({ date, time, foodId, onTelegramClick, onReplay }: {
+  date: string; time: string; foodId: FoodId | null; onTelegramClick: () => void; onReplay: () => void;
+}) {
+  const { dateLabel, timeLabel } = formatDateTimeInTashkent(date, time);
+  const food = FOOD_OPTIONS.find(option => option.id === foodId);
+  return <section className={styles.stage} aria-labelledby="final-heading">
+    <div className={styles.finalIllustration} aria-hidden="true">
+      <svg viewBox="0 0 110 90" fill="none"><rect x="19" y="26" width="72" height="49" rx="8"/><path d="m20 30 35 25 35-25M20 73l24-25M90 73 66 49"/><path className={styles.filledHeart} d="M55 39s-18-10-18-21c0-9 13-13 18-4 5-9 18-5 18 4 0 11-18 21-18 21Z"/></svg>
+      <span>♡</span>
     </div>
-  );
+    <p className={styles.eyebrow}>my favourite answer was yours</p>
+    <h1 id="final-heading" className={styles.finalHeading} tabIndex={-1} data-stage-heading>glad you didn&apos;t<br /><em>say no ♡</em></h1>
+    <div className={styles.dateTicket}>
+      <span className={styles.ticketLabel}>WE HAVE A DATE</span>
+      <p className={styles.finalLead}>be ready by <strong>{timeLabel}</strong><span>I&apos;m coming to get you 🚗💨</span></p>
+      <div className={styles.ticketDetails}><span>{dateLabel}</span><span>{food?.emoji} {food?.label}</span></div>
+      <span className={styles.ticketHeart} aria-hidden="true">♡</span>
+    </div>
+    <a className={styles.telegramButton} href={INVITATION_CONFIG.telegramUrl} target="_blank" rel="noopener noreferrer"
+      onClick={onTelegramClick}>Back to him ♡ <svg width="17" height="17" viewBox="0 0 20 20" fill="none" aria-hidden="true"><path d="M4 16 16 4M5 4h11v11" stroke="currentColor" strokeWidth="1.5" /></svg></a>
+    <p className={styles.reservationStatus}>reservation status: suspiciously successful ✅</p>
+    <button className={styles.replayButton} type="button" onClick={onReplay}>one more smile? <span aria-hidden="true">↺</span></button>
+  </section>;
 }
-

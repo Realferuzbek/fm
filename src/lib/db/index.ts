@@ -1,3 +1,4 @@
+import "server-only";
 import { neon } from "@neondatabase/serverless";
 import { drizzle } from "drizzle-orm/neon-http";
 
@@ -18,3 +19,11 @@ export function getDb() {
 }
 
 export type Database = ReturnType<typeof getDb>;
+
+export type SqlExecutor = <T>(statement: string, parameters?: unknown[]) => Promise<T[]>;
+
+export const executeSql: SqlExecutor = async <T>(statement: string, parameters: unknown[] = []) => {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is required.");
+  return await neon(connectionString).query(statement, parameters) as T[];
+};

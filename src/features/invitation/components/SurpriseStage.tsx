@@ -1,58 +1,17 @@
-"use client";
-
 import styles from "../InvitationExperience.module.css";
 
-interface SurpriseStageProps {
-  isReaction?: boolean;
-  onOkay: () => void;
-}
-
-/**
- * Stage 2: The merged yes-reaction + surprise screen.
- * Displays "WAIT YOU ACTUALLY SAID YES??" with a cute emoji pop,
- * a soft italic line, and an "okay okay!" button.
- * Flow:
- * Short ~0.8s reaction ("YAY!! ♡") -> "WAIT YOU ACTUALLY SAID YES?? 😭"
- * -> "I was so ready for you to say no 😭" -> "okay okay! →"
- */
-export function SurpriseStage({ onOkay }: SurpriseStageProps): JSX.Element {
-export function SurpriseStage({ isReaction = false, onOkay }: SurpriseStageProps) {
-  if (isReaction) {
-    return (
-      <div className={styles.stage} style={{ padding: "30px 0" }}>
-        <div className={styles.surpriseEmoji} aria-hidden="true" style={{ fontSize: "3.5rem" }}>
-          💖
-        </div>
-        <h2 className={styles.surpriseHeading} tabIndex={-1} data-stage-heading>
-          YAY!! ♡
-        </h2>
-        <p className={styles.surpriseSubtext}>
-          Wait a second...
-        </p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-    <div className={styles.stage}>
-      <div className={styles.surpriseEmoji} aria-hidden="true">
-        😭
-      </div>
-      <h2 className={styles.surpriseHeading} tabIndex={-1} data-stage-heading>
-        WAIT YOU ACTUALLY SAID YES??
-      </h2>
-      <p className={styles.surpriseSubtext}>
-        I was so ready for you to say no 😭
-      </p>
-      <button
-        className={styles.okayButton}
-        type="button"
-        onClick={onOkay}
-      >
-        okay okay! →
-      </button>
-    </>
-    </div>
-  );
+export function SurpriseStage({ isReaction = false, onOkay }: { isReaction?: boolean; onOkay: () => void }) {
+  if (isReaction) return <section className={styles.reactionStage} aria-live="polite" aria-busy="true">
+    <div className={styles.reactionHeart} aria-hidden="true">♡</div>
+    <h1 className={styles.reactionText}>processing that yes…</h1>
+    <span className={styles.reactionLine} aria-hidden="true" />
+  </section>;
+  return <section className={styles.stage} aria-labelledby="surprise-heading">
+    <div className={styles.emotionIllustration} aria-hidden="true"><span>😭</span><i>♡</i><b>✧</b></div>
+    <p className={styles.eyebrow}>well. this is a plot twist.</p>
+    <h1 id="surprise-heading" className={styles.surpriseHeading} tabIndex={-1} data-stage-heading>WAIT YOU ACTUALLY<br /><em>SAID YES??</em> <span className={styles.srOnly}>😭</span></h1>
+    <p className={styles.surpriseSubtext}>I was so ready for you to say no 😭</p>
+    <button type="button" className={styles.okayButton} onClick={onOkay}>okay okay! <span aria-hidden="true">→</span></button>
+    <p className={styles.littleNote}>let me pretend I had a plan.</p>
+  </section>;
 }

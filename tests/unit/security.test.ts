@@ -5,6 +5,9 @@ import {
   hashInviteToken,
   createInviteSession,
   readInviteSession,
+  PRIVATE_SESSION_MAX_AGE_SECONDS,
+  assertSameOrigin,
+  readJsonBody,
 } from "@/lib/server/security";
 import { extractInviteToken } from "@/lib/server/invites";
 
@@ -58,6 +61,25 @@ describe("security utilities", () => {
     expect(extractInviteToken(`https://example.com/#invite=${token}`)).toBe(token);
     expect(extractInviteToken(`https://example.com/?invite=${token}`)).toBe(token);
     expect(extractInviteToken("https://example.com/")).toBeNull();
+  });
+
+  it("enforces session expiration and rejects future-issued sessions", () => {
+    const inviteId = "a0b1c2d3-e4f5-4a6b-8c7d-9e0f1a2b3c4d";
+    expect(readInviteSession(createInviteSession(inviteId, Date.now() - PRIVATE_SESSION_MAX_AGE_SECONDS * 1000))).toBeNull();
+    expect(readInviteSession(createInviteSession(inviteId, Date.now() + 120_000))).toBeNull();
+  });
+
+  it("rejects foreign and absent origins", () => {
+    process.env.APP_ORIGIN = "https://example.com";
+    expect(() => assertSameOrigin(new Request("https://example.com/api", { headers: { origin: "https://evil.example" } }))).toThrow();
+    expect(() => assertSameOrigin(new Request("https://example.com/api"))).toThrow();
+    expect(() => assertSameOrigin(new Request("https://example.com/api", { headers: { origin: "https://example.com" } }))).not.toThrow();
+  });
+
+  it("bounds streamed request bodies by UTF-8 bytes even without content-length", async () => {
+    const request = new Request("https://example.com", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ value: "🌸".repeat(20) }) });
+    await expect(readJsonBody(request, 40)).rejects.toMatchObject({ status: 413 });
+    await expect(readJsonBody(new Request("https://example.com", { method: "POST", body: "{}" }))).rejects.toMatchObject({ status: 415 });
   });
 });
 

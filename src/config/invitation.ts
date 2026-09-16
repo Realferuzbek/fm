@@ -1,15 +1,22 @@
 export const INVITATION_CONFIG = {
   assetPaths: {
-    petImage: "/assets/images/pet-photo.jpg",
-    backgroundAudio: "/assets/audio/background.mp3"
+    petImage: "/assets/images/ChatGPT Image Sep 14, 2026, 05_00_08 PM (2).png",
+    backgroundAudio: "/assets/audio/alisher-uzoqov-oshiq-yurak_(uzhits.net).mp3"
   },
   petImageObjectPosition: "50% 50%",
-  petImageAlt: "A very persuasive little pet",
+  petImageObjectFit: "contain" as "contain" | "cover",
+  petImageAlt: "A little black pug in a cozy sweater, making a very persuasive face",
   telegramUrl: "https://t.me/realferuzbek",
   timeZone: "Asia/Tashkent",
   audioVolume: 0.28,
+  motion: { reactionMs: 650, foodSelectionMs: 420 },
   locale: "en-US"
 } as const;
+
+/** Config paths use actual filenames; encode each segment for production URLs. */
+export function assetUrl(path: string) {
+  return path.split("/").map(segment => encodeURIComponent(segment)).join("/");
+}
 
 export const FOOD_OPTIONS = [
   { id: "donar", emoji: "🍗", label: "Donar", detail: "comfortingly correct" },
@@ -40,6 +47,11 @@ export const EVENT_NAMES = [
 ] as const;
 
 export type AnalyticsEventName = (typeof EVENT_NAMES)[number];
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export function isUuidValue(value: unknown): value is string {
+  return typeof value === "string" && UUID_PATTERN.test(value);
+}
 
 function partsForTimeZone(date: Date) {
   const parts = new Intl.DateTimeFormat("en-CA", {

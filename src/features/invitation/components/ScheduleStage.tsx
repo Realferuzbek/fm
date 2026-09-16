@@ -1,102 +1,37 @@
 "use client";
-
-import { useId } from "react";
+import { useId, type FormEvent } from "react";
 import styles from "../InvitationExperience.module.css";
 
-interface ScheduleStageProps {
-  date: string;
-  time: string;
-  minDate: string;
-  isValid: boolean;
-  onDateChange: (date: string) => void;
-  onTimeChange: (time: string) => void;
-  onConfirm: () => void;
-}
-
-/**
- * Stage 3: Date and time selection.
- * Native date and time inputs wrapped in accessible, touch-friendly containers.
- */
-export function ScheduleStage({
-  date,
-  time,
-  minDate,
-  isValid,
-  onDateChange,
-  onTimeChange,
-  onConfirm,
-}: ScheduleStageProps) {
-  const dateId = useId();
-  const timeId = useId();
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (isValid) {
-      onConfirm();
-    }
-  };
-
-  return (
-    <form className={styles.stage} onSubmit={handleSubmit}>
-      <p className={styles.eyebrow}>step 1 of 2: timing</p>
-      <h2 className={styles.scheduleHeading} tabIndex={-1} data-stage-heading>
-        When are you free? 🗓️
-      </h2>
-      <p className={styles.scheduleSubtext}>
-        Pick a date and time that works best for you (Tashkent time).
-      </p>
-
-      <div className={styles.inputGroup}>
-        <div className={styles.inputWrapper}>
-          <label htmlFor={dateId} className={styles.inputLabel}>
-            Date
-          </label>
-          <input
-            id={dateId}
-            type="date"
-            className={styles.dateInput}
-            value={date}
-            min={minDate}
-            required
-            onChange={(e) => onDateChange(e.target.value)}
-          />
-        </div>
-
-        <div className={styles.inputWrapper}>
-          <label htmlFor={timeId} className={styles.inputLabel}>
-            Time
-          </label>
-          <input
-            id={timeId}
-            type="time"
-            className={styles.timeInput}
-            value={time}
-            required
-            onChange={(e) => onTimeChange(e.target.value)}
-          />
-        </div>
+export function ScheduleStage({ date, time, minDate, isValid, onDateChange, onTimeChange, onConfirm }: {
+  date: string; time: string; minDate: string; isValid: boolean;
+  onDateChange: (date: string) => void; onTimeChange: (time: string) => void; onConfirm: () => void;
+}) {
+  const dateId = useId(), timeId = useId(), hintId = useId();
+  const invalid = Boolean(date && time && !isValid);
+  const submit = (event: FormEvent) => { event.preventDefault(); if (isValid) onConfirm(); };
+  return <form className={styles.stage} onSubmit={submit} aria-labelledby="schedule-heading">
+    <div className={styles.lineIllustration} aria-hidden="true">
+      <svg viewBox="0 0 80 80" fill="none"><rect x="15" y="19" width="50" height="47" rx="10"/><path d="M15 34h50M29 12v15M51 12v15"/><path className={styles.filledHeart} d="M40 55s-10-5-10-11c0-5 7-7 10-2 3-5 10-3 10 2 0 6-10 11-10 11Z"/></svg>
+    </div>
+    <p className={styles.eyebrow}>let&apos;s make a little time for us</p>
+    <h1 id="schedule-heading" className={styles.scheduleHeading} tabIndex={-1} data-stage-heading>So... when are<br /><em>you free?</em></h1>
+    <p className={styles.scheduleSubtext}>Pick a day &amp; time ♡</p>
+    <div className={styles.inputGroup}>
+      <div className={styles.inputWrapper}>
+        <label htmlFor={dateId} className={styles.inputLabel}>Our day</label>
+        <input id={dateId} type="date" value={date} min={minDate} required className={styles.dateInput}
+          aria-describedby={hintId} aria-invalid={invalid || undefined} onChange={event => onDateChange(event.target.value)} />
       </div>
-
-      <button
-        type="submit"
-        className={styles.confirmButton}
-        disabled={!isValid}
-      >
-        Next: Important Food Choices →
-      </button>
-
-      {(!date || !time) && (
-        <p className={styles.scheduleHint}>
-          Please select both a date and time to continue.
-        </p>
-      )}
-
-      {date && time && !isValid && (
-        <p className={styles.scheduleHint} style={{ color: "var(--rose-700)" }}>
-          Please pick a future date and time in Tashkent time ♡
-        </p>
-      )}
-    </form>
-  );
+      <div className={styles.inputWrapper}>
+        <label htmlFor={timeId} className={styles.inputLabel}>Your time</label>
+        <input id={timeId} type="time" value={time} required className={styles.timeInput}
+          aria-describedby={hintId} aria-invalid={invalid || undefined} onChange={event => onTimeChange(event.target.value)} />
+      </div>
+    </div>
+    <p id={hintId} className={invalid ? styles.formError : styles.scheduleHint} aria-live="polite">
+      {invalid ? "A little further in the future, please ♡" : "A little rendezvous, in Tashkent time."}
+    </p>
+    <button type="submit" className={styles.confirmButton} disabled={!isValid}>Set the date ♡</button>
+    <p className={styles.littleNote}>I&apos;ll make sure it&apos;s worth getting ready for.</p>
+  </form>;
 }
-

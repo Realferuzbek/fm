@@ -3,6 +3,7 @@ import {
   integer,
   pgEnum,
   pgTable,
+  primaryKey,
   timestamp,
   uniqueIndex,
   uuid,
@@ -42,6 +43,7 @@ export const reservations = pgTable(
     time: varchar("time", { length: 5 }).notNull(),
     food: varchar("food", { length: 32 }).notNull(),
     timeZone: varchar("time_zone", { length: 64 }).notNull().default("Asia/Tashkent"),
+    version: integer("version").notNull().default(1),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow()
   },
@@ -49,10 +51,10 @@ export const reservations = pgTable(
 );
 
 /**
- * The outbox makes Telegram delivery durable and lets an updated reservation
- * edit the original message instead of creating a second notification.
+ * Historical archive only. Runtime delivery uses notificationDeliveries;
+ * no worker reads this table or edits old Telegram messages.
  */
-export const notificationOutbox = pgTable(
+export const legacyNotificationOutbox = pgTable(
   "notification_outbox",
   {
     id: uuid("id").defaultRandom().primaryKey(),
@@ -102,4 +104,43 @@ export const events = pgTable(
 
 export type Invite = typeof invites.$inferSelect;
 export type Reservation = typeof reservations.$inferSelect;
-export type NotificationOutbox = typeof notificationOutbox.$inferSelect;
+
+export const reservationRevisions = pgTable("reservation_revisions", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  reservationId: uuid("reservation_id").notNull().references(() => reservations.id, { onDelete: "restrict" }),
+  version: integer("version").notNull(),
+  requestId: uuid("request_id").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  time: varchar("time", { length: 5 }).notNull(),
+  food: varchar("food", { length: 32 }).notNull(),
+  timeZone: varchar("time_zone", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("reservation_revisions_version_unique").on(table.reservationId, table.version),
+  uniqueIndex("reservation_revisions_request_unique").on(table.reservationId, table.requestId),
+]);
+
+export const notificationDeliveries = pgTable("notification_deliveries", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  inviteId: uuid("invite_id").notNull().references(() => invites.id, { onDelete: "restrict" }),
+  kind: varchar("kind", { length: 32 }).notNull(),
+  dedupeKey: varchar("dedupe_key", { length: 160 }).notNull(),
+  revisionId: uuid("revision_id").references(() => reservationRevisions.id, { onDelete: "restrict" }),
+  status: varchar("status", { length: 16 }).notNull().default("pending"),
+  telegramMessageId: varchar("telegram_message_id", { length: 64 }),
+  attempts: integer("attempts").notNull().default(0),
+  lastError: varchar("last_error", { length: 256 }),
+  lastAttemptAt: timestamp("last_attempt_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [uniqueIndex("notification_deliveries_dedupe_unique").on(table.inviteId, table.kind, table.dedupeKey)]);
+
+export const reservationRequests = pgTable("reservation_requests", {
+  inviteId: uuid("invite_id").notNull().references(() => invites.id, { onDelete: "restrict" }),
+  requestId: uuid("request_id").notNull(),
+  expectedVersion: integer("expected_version").notNull(),
+  date: varchar("date", { length: 10 }).notNull(),
+  time: varchar("time", { length: 5 }).notNull(),
+  food: varchar("food", { length: 32 }).notNull(),
+  revisionId: uuid("revision_id").references(() => reservationRevisions.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => [primaryKey({ columns: [table.inviteId, table.requestId] })]);

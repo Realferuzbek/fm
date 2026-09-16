@@ -63,4 +63,41 @@ describe("invitation story reducer", () => {
     expect(isScheduleValid("2099-08-19", "24:00")).toBe(false);
     expect(isScheduleValid("not-a-date", "19:30")).toBe(false);
   });
+
+  it("restarts a completed story without treating stored state as authority", () => {
+    const state = invitationReducer(createInitialInvitationState(), {
+      type: "RESTORE",
+      payload: { stage: "final", date: "2099-08-19", time: "19:30", foodId: "osh" },
+    });
+    expect(state).toEqual(createInitialInvitationState());
+    expect(state).not.toHaveProperty("isPrivateSession");
+  });
+
+  it("moves an expired unfinished schedule back to the date form", () => {
+    const state = invitationReducer(createInitialInvitationState(), {
+      type: "RESTORE", payload: { stage: "food", date: "2001-01-01", time: "19:00", foodId: "osh" },
+    });
+    expect(state.stage).toBe("schedule");
+  });
+
+  it("can display a server-confirmed historical reservation", () => {
+    const state = invitationReducer(createInitialInvitationState(), {
+      type: "SHOW_SAVED", reservation: { id: "saved", version: 1, date: "2001-01-01", time: "19:00", food: "osh" },
+    });
+    expect(state).toMatchObject({ stage: "final", time: "19:00", foodId: "osh" });
+  });
+
+  it("keeps an expired unresolved save available for server reconciliation", () => {
+    const state = invitationReducer(createInitialInvitationState(), {
+      type: "RECOVER_PENDING", date: "2001-01-01", time: "19:00", foodId: "osh",
+    });
+    expect(state).toMatchObject({ stage: "food", date: "2001-01-01", foodId: "osh" });
+    expect(invitationReducer(state, { type: "RECOVER_PENDING", date: "broken", time: "19:00", foodId: "osh" })).toEqual(state);
+  });
+
+  it("does not accept form edits from an unrelated story stage", () => {
+    const state = createInitialInvitationState();
+    expect(invitationReducer(state, { type: "DATE_CHANGED", date: "2099-08-19" })).toEqual(state);
+    expect(invitationReducer(state, { type: "FOOD_SELECTED", foodId: "osh" })).toEqual(state);
+  });
 });

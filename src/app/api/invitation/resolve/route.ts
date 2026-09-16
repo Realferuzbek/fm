@@ -1,39 +1,25 @@
-import { createHash } from "node:crypto";
 import { cookies } from "next/headers";
-import { apiErrorBody, assertSameOrigin, createInviteSession, isValidInviteToken, privateSessionCookieOptions, PRIVATE_SESSION_COOKIE, readJsonBody, ApiError } from "@/lib/server/security";
+import { assertSameOrigin, createInviteSession, hashInviteToken, privateSessionCookieOptions, PRIVATE_SESSION_COOKIE, readJsonBody, ApiError } from "@/lib/server/security";
 import { findActiveInviteByToken } from "@/lib/server/invites";
 import { consumeRateLimit } from "@/lib/server/rate-limit";
+import { parseInviteInput } from "@/lib/server/validation";
+import { getCurrentReservation } from "@/lib/server/reservations";
+import { errorResponse, NO_STORE } from "@/lib/server/http";
+
+export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
     assertSameOrigin(request);
-
-    const ipHash = createHash("sha256")
-      .update(request.headers.get("x-forwarded-for") ?? request.headers.get("user-agent") ?? "unknown")
-      .digest("hex");
-
-    if (!consumeRateLimit(`resolve:${ipHash}`, 10, 60_000)) {
-      throw new ApiError(429, "too_many_requests", "Too many requests.");
+    const { token } = parseInviteInput(await readJsonBody(request, 1024));
+    if (!consumeRateLimit(`resolve:${hashInviteToken(token)}`, 30, 60_000)) {
+      throw new ApiError(429, "too_many_requests", "Give this a moment, then try again.");
     }
-
-    const body = await readJsonBody(request) as { token?: unknown };
-    if (!body || typeof body.token !== "string" || !isValidInviteToken(body.token)) {
-      throw new ApiError(400, "invalid_invite_token", "The invitation link is not valid.");
-    }
-
-    const invite = await findActiveInviteByToken(body.token);
-    if (!invite) {
-      return Response.json({ error: "Invitation not found or expired.", code: "invite_not_found" }, { status: 404, headers: { "Cache-Control": "no-store" } });
-    }
-
-    const sessionValue = createInviteSession(invite.id);
-    cookies().set(PRIVATE_SESSION_COOKIE, sessionValue, privateSessionCookieOptions);
+    const invite = await findActiveInviteByToken(token);
+    if (!invite) throw new ApiError(404, "invite_not_found", "This invitation is not available. Ask for a fresh link.");
+    const reservation = await getCurrentReservation(invite.id);
     const cookieStore = await cookies();
-    cookieStore.set(PRIVATE_SESSION_COOKIE, sessionValue, privateSessionCookieOptions);
-
-    return Response.json({ resolved: true }, { headers: { "Cache-Control": "no-store" } });
-  } catch (error) {
-    const { status, body } = apiErrorBody(error);
-    return Response.json(body, { status, headers: { "Cache-Control": "no-store" } });
-  }
+    cookieStore.set(PRIVATE_SESSION_COOKIE, createInviteSession(invite.id), privateSessionCookieOptions);
+    return Response.json({ inviteId: invite.id, reservation }, { headers: NO_STORE });
+  } catch (error) { return errorResponse(error); }
 }

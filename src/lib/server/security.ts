@@ -1,10 +1,11 @@
+import "server-only";
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { isUuidValue } from "@/config/invitation";
 
 export const PRIVATE_SESSION_COOKIE = "date_invite_session";
 export const PRIVATE_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 31;
 
 const INVITE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export class ApiError extends Error {
   constructor(
@@ -19,7 +20,7 @@ export class ApiError extends Error {
 
 function requiredEnvironment(name: string) {
   const value = process.env[name];
-  if (!value) throw new Error(`${name} is required on the server.`);
+  if (!value || value.length < 32 || value.startsWith("replace-with")) throw new Error(`${name} must be a strong server-only secret.`);
   return value;
 }
 
@@ -59,7 +60,7 @@ function signSessionPayload(encodedPayload: string, secret = requiredEnvironment
 
 /** The browser only receives a signed invite id, never the raw bearer token. */
 export function createInviteSession(inviteId: string, issuedAt = Date.now()) {
-  if (!UUID_PATTERN.test(inviteId)) throw new Error("Cannot create a session for an invalid invite id.");
+  if (!isUuidValue(inviteId)) throw new Error("Cannot create a session for an invalid invite id.");
 
   const payload: InviteSessionPayload = { v: 1, inviteId, issuedAt };
   const encodedPayload = Buffer.from(JSON.stringify(payload)).toString("base64url");
@@ -67,7 +68,7 @@ export function createInviteSession(inviteId: string, issuedAt = Date.now()) {
 }
 
 export function readInviteSession(cookieValue: string | undefined): InviteSessionPayload | null {
-  if (!cookieValue) return null;
+  if (!cookieValue || cookieValue.length > 1024) return null;
   const [encodedPayload, suppliedSignature, ...extra] = cookieValue.split(".");
   if (!encodedPayload || !suppliedSignature || extra.length > 0) return null;
 
@@ -76,12 +77,11 @@ export function readInviteSession(cookieValue: string | undefined): InviteSessio
 
   try {
     const payload = JSON.parse(Buffer.from(encodedPayload, "base64url").toString("utf8")) as Partial<InviteSessionPayload>;
-    if (payload.v !== 1 || typeof payload.issuedAt !== "number" || !UUID_PATTERN.test(payload.inviteId ?? "")) {
+    if (payload.v !== 1 || typeof payload.issuedAt !== "number" || !isUuidValue(payload.inviteId)) {
       return null;
     }
-    // Reject obviously malformed/future cookies. Cookie expiration itself is enforced by the browser.
-    if (payload.issuedAt > Date.now() + 60_000) return null;
-    return { v: 1, inviteId: payload.inviteId, issuedAt: payload.issuedAt };
+    const age = Date.now() - payload.issuedAt;
+    if (!Number.isFinite(payload.issuedAt) || age < -60_000 || age >= PRIVATE_SESSION_MAX_AGE_SECONDS * 1000) return null;
     return { v: 1, inviteId: payload.inviteId as string, issuedAt: payload.issuedAt };
   } catch {
     return null;
@@ -94,18 +94,13 @@ export function readInviteSession(cookieValue: string | undefined): InviteSessio
  */
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
+  if (process.env.NODE_ENV === "production" && !process.env.APP_ORIGIN) {
+    throw new Error("APP_ORIGIN is required in production.");
+  }
   const expectedOrigin = process.env.APP_ORIGIN ? new URL(process.env.APP_ORIGIN).origin : new URL(request.url).origin;
 
   if (!origin || origin !== expectedOrigin) {
     throw new ApiError(403, "cross_origin_request", "This request is not allowed from this origin.");
-  }
-}
-
-export function assertCronAuthorization(request: Request) {
-  const expected = `Bearer ${requiredEnvironment("CRON_SECRET")}`;
-  const supplied = request.headers.get("authorization") ?? "";
-  if (!constantTimeEqual(supplied, expected)) {
-    throw new ApiError(401, "unauthorized", "Unauthorized.");
   }
 }
 
@@ -120,9 +115,28 @@ export async function readJsonBody(request: Request, maxBytes = 8_192): Promise<
     throw new ApiError(413, "payload_too_large", "Request body is too large.");
   }
 
-  const rawBody = await request.text();
-  if (new TextEncoder().encode(rawBody).byteLength > maxBytes) {
-    throw new ApiError(413, "payload_too_large", "Request body is too large.");
+  const reader = request.body?.getReader();
+  if (!reader) throw new ApiError(400, "invalid_json", "Request body must be valid JSON.");
+  const decoder = new TextDecoder("utf-8", { fatal: true });
+  let rawBody = "";
+  let bytes = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > maxBytes) {
+        await reader.cancel();
+        throw new ApiError(413, "payload_too_large", "Request body is too large.");
+      }
+      rawBody += decoder.decode(value, { stream: true });
+    }
+    rawBody += decoder.decode();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(400, "invalid_json", "Request body must be valid JSON.");
+  } finally {
+    reader.releaseLock();
   }
 
   try {
