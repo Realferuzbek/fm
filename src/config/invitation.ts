@@ -1,7 +1,7 @@
 export const INVITATION_CONFIG = {
   assetPaths: {
     petImage: "/assets/images/ChatGPT Image Sep 14, 2026, 05_00_08 PM (2).png",
-    backgroundAudio: "/assets/audio/alisher-uzoqov-oshiq-yurak_(uzhits.net).mp3"
+    backgroundAudio: "/assets/audio/shohruhxon-malikam-2017-uzhitsnet_DxwQkYKL.mp3"
   },
   petImageObjectPosition: "50% 50%",
   petImageObjectFit: "contain" as "contain" | "cover",
